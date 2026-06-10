@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #1e293b;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', 'Noto Sans Thai', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* บังคับ layout แบบหน้าจอใหญ่ตอน export PDF */
+.pdf-export-layout.report-stats-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+
+.pdf-export-layout.report-charts-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.pdf-export-layout .report-charts-main {
+  grid-column: span 2 / span 2 !important;
+}
+
+.pdf-export-layout .report-stat-card-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pdf-export-layout .report-stat-label,
+.pdf-export-layout .report-stat-value {
+  white-space: nowrap !important;
+}
+
+.pdf-export-layout .report-title {
+  font-size: 1.125rem !important;
+  line-height: 1.375 !important;
+}
