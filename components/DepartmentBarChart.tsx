@@ -93,8 +93,8 @@ export default function DepartmentBarChart({ data }: Props) {
                 }
                 return (
                   <text
-                    x={x + width / 2}
-                    y={y - 6}
+                    x={(Number(x) + width / 2)}
+                    y={(Number(y) - 6)}
                     fill={CHART_COLORS[index % CHART_COLORS.length]}
                     textAnchor="middle"
                     fontSize={11}
