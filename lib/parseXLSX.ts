@@ -223,24 +223,34 @@ export function parseXLSXBuffer(buf: Buffer): DashboardData {
   }
 
   // ── 3. Derive departments by aggregating items ──
-  const deptMap = new Map<string, { count: number; totalPrice: number }>();
+  const deptMap = new Map<
+    string,
+    { count: number; totalPrice: number; pricePerUnit: number }
+  >();
   for (const item of items) {
     const dName = item.department || "ไม่ระบุ";
-    const existing = deptMap.get(dName) ?? { count: 0, totalPrice: 0 };
+    const existing = deptMap.get(dName) ?? {
+      count: 0,
+      totalPrice: 0,
+      pricePerUnit: 0,
+    };
     deptMap.set(dName, {
-      count:      existing.count      + item.quantity,
+      count: existing.count + item.quantity,
       totalPrice: existing.totalPrice + item.totalPrice,
+      pricePerUnit: existing.pricePerUnit + item.pricePerUnit,
     });
   }
 
   const totalItems = items.reduce((s, i) => s + i.quantity, 0);
   const totalPrice = items.reduce((s, i) => s + i.totalPrice, 0);
+  const pricePerUnit = items.reduce((s, i) => s + i.pricePerUnit, 0);
 
   const departments: DepartmentData[] = Array.from(deptMap.entries())
-    .map(([name, { count, totalPrice: tp }]) => ({
+    .map(([name, { count, totalPrice: tp, pricePerUnit: ppu }]) => ({
       name,
       count,
       totalPrice: tp,
+      pricePerUnit: ppu,
       percentage: totalItems ? parseFloat(((count / totalItems) * 100).toFixed(2)) : 0,
     }))
     .sort((a, b) => b.count - a.count);
@@ -255,7 +265,7 @@ export function parseXLSXBuffer(buf: Buffer): DashboardData {
       totalItems,
       totalDepartments: departments.length,
       totalSets: items.length,
-      pricePerUnit: 0,
+      pricePerUnit,
       totalPrice,
     },
     departments,
