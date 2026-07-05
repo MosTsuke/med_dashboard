@@ -70,3 +70,40 @@ pm2 save
 `http://<php-server>/uploads/สถิติ ล้าง.xlsx` — ถ้าไฟล์ xlsx อยู่ในโฟลเดอร์ที่ PHP serve เป็น static file อยู่แล้วก็ใช้ path นั้นตรง ๆ ได้เลย
 
 ถ้ายังไม่รู้ว่า path ไฟล์ xlsx ปัจจุบันอยู่ตรงไหน หรืออยากให้ชี้บรรทัดที่แน่นอน ส่ง snippet PHP ส่วนที่ list ไฟล์มาให้ดูได้ จะชี้ตำแหน่งที่แน่นอนให้
+
+## 6. ทางเลือกอื่น — ส่งไฟล์ตรงแบบไม่ต้องมี URL สาธารณะ (postMessage / blob)
+
+วิธี `?src=...` ด้านบนใช้ได้ก็ต่อเมื่อ Dashboard (ฝั่ง Node) สามารถ fetch ไฟล์ xlsx ได้เองตรง ๆ แบบไม่ต้อง login — ถ้าไฟล์ xlsx ของจริงถูกป้องกันด้วย session/login ของ PHP (Node fetch เข้าไม่ถึง) หรือไม่อยากเปิด URL สาธารณะให้ไฟล์เลย มีอีกทางคือให้ browser ของผู้ใช้ (ที่ login อยู่แล้ว) ดึงไฟล์มาเป็นไบต์ในหน่วยความจำเอง แล้วส่งต่อให้แท็บ Dashboard ตรง ๆ ผ่าน `postMessage` — ไม่มีการ save ไฟล์ลงดิสก์ระหว่างทางเลย และไม่ต้องแก้อะไรฝั่ง Dashboard/backend เพิ่มอีก (โค้ดรองรับไว้แล้ว)
+
+ตัวอย่างโค้ด JS ฝั่ง PHP ที่ผูกกับปุ่ม:
+
+```js
+function openDashboardWithBlob(fileUrl, fileName) {
+  const dashboardOrigin = "http://localhost:3001"; // แก้ตาม host/port จริง
+  const tab = window.open(dashboardOrigin + "/", "_blank");
+
+  function onReady(event) {
+    if (event.origin !== dashboardOrigin) return;
+    if (event.data?.type !== "dashboard-ready") return;
+    window.removeEventListener("message", onReady);
+
+    // ดึงไฟล์ด้วย session/cookie ของผู้ใช้เอง — ไม่ผ่าน Node เลย
+    fetch(fileUrl, { credentials: "same-origin" })
+      .then((r) => r.arrayBuffer())
+      .then((buffer) => {
+        tab.postMessage({ type: "xlsx-file", name: fileName, buffer }, dashboardOrigin);
+      });
+  }
+  window.addEventListener("message", onReady);
+}
+```
+
+```php
+<button onclick="openDashboardWithBlob('/uploads/<?= rawurlencode($filename) ?>', '<?= addslashes($filename) ?>')">
+  ดู Dashboard
+</button>
+```
+
+ลำดับการทำงาน: เปิดแท็บใหม่ → แท็บ Dashboard ส่งสัญญาณ `dashboard-ready` กลับมาบอกว่าพร้อมรับไฟล์แล้ว → หน้า PHP ค่อยดึงไฟล์แล้วส่งไบต์เข้าไป — กันปัญหาส่งไฟล์ไปตอนแท็บใหม่ยังโหลดไม่เสร็จ
+
+อยากจำกัดว่าต้องเป็น origin ของหน้า PHP เท่านั้นถึงจะส่งไฟล์เข้ามาได้ (กันแท็บอื่นแอบส่งข้อมูลปลอม) ตั้ง env var `NEXT_PUBLIC_TRUSTED_OPENER_ORIGIN=http://<php-host>:8080` ตอน build/run Dashboard ได้ ถ้าไม่ตั้งไว้จะรับจาก opener origin ไหนก็ได้ (เหมาะกับใช้งานในวงแลนปิดของโรงพยาบาลอยู่แล้ว)

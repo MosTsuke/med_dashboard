@@ -55,37 +55,106 @@ export default function DashboardPage() {
   const uploaderRef = useRef<FileUploaderHandle>(null);
 
   /** Lets another local app (e.g. a PHP page listing xlsx files) deep-link
-   * straight into a report: open `/?src=<url-encoded xlsx URL>` in a new
-   * tab and this loads it automatically instead of showing the upload UI.
-   * The file is fetched server-side via the API route, so cross-origin
-   * (different port) sources work fine. */
+   * straight into a report, two ways:
+   *
+   * 1. `/?src=<url-encoded xlsx URL>` — this page's own server fetches
+   *    that URL and parses it. Simple, but only works if the file is
+   *    reachable by a plain HTTP fetch (no login/session required).
+   *
+   * 2. Opened via `window.open()` with no `src` — the opener tab (e.g. a
+   *    PHP page that already has the user's session/cookies and reads the
+   *    file bytes itself) sends the raw xlsx bytes directly over
+   *    `postMessage`, so the browser never has to download the file to
+   *    disk or hit a public URL at all. This tab pings the opener with
+   *    `{ type: "dashboard-ready" }` first so the opener knows when it's
+   *    safe to send the file — see DEPLOY.md for the matching PHP-side
+   *    snippet.
+   */
   useEffect(() => {
     const src = new URLSearchParams(window.location.search).get("src");
-    if (!src) return;
+
+    if (src) {
+      let cancelled = false;
+      setAutoLoadState("loading");
+      fetch(`/api/parse-xlsx?src=${encodeURIComponent(src)}`)
+        .then(async (res) => {
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "เกิดข้อผิดพลาดในการอ่านไฟล์");
+          }
+          return (await res.json()) as DashboardData;
+        })
+        .then((d) => {
+          if (cancelled) return;
+          handleDataLoaded(d);
+          setAutoLoadState("idle");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setAutoLoadError(e instanceof Error ? e.message : "ไม่สามารถโหลดไฟล์ได้");
+          setAutoLoadState("error");
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!window.opener) return;
 
     let cancelled = false;
+    const trustedOrigin = process.env.NEXT_PUBLIC_TRUSTED_OPENER_ORIGIN;
+
+    const sendToParser = (buffer: ArrayBuffer, name: string) => {
+      const file = new File([buffer], name || "report.xlsx");
+      const form = new FormData();
+      form.append("file", file);
+
+      fetch("/api/parse-xlsx", { method: "POST", body: form })
+        .then(async (res) => {
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "เกิดข้อผิดพลาดในการอ่านไฟล์");
+          }
+          return (await res.json()) as DashboardData;
+        })
+        .then((d) => {
+          if (cancelled) return;
+          handleDataLoaded(d);
+          setAutoLoadState("idle");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setAutoLoadError(e instanceof Error ? e.message : "ไม่สามารถโหลดไฟล์ได้");
+          setAutoLoadState("error");
+        });
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== window.opener) return;
+      if (trustedOrigin && event.origin !== trustedOrigin) return;
+      if (event.data?.type !== "xlsx-file" || !event.data.buffer) return;
+      clearTimeout(timeoutId);
+      window.removeEventListener("message", handleMessage);
+      sendToParser(event.data.buffer, event.data.name);
+    };
+
+    window.addEventListener("message", handleMessage);
     setAutoLoadState("loading");
-    fetch(`/api/parse-xlsx?src=${encodeURIComponent(src)}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || "เกิดข้อผิดพลาดในการอ่านไฟล์");
-        }
-        return (await res.json()) as DashboardData;
-      })
-      .then((d) => {
-        if (cancelled) return;
-        handleDataLoaded(d);
-        setAutoLoadState("idle");
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setAutoLoadError(e instanceof Error ? e.message : "ไม่สามารถโหลดไฟล์ได้");
-        setAutoLoadState("error");
-      });
+    // Tell the opener we're ready — it should wait for this before posting
+    // the file so the message isn't sent before this listener exists.
+    window.opener.postMessage({ type: "dashboard-ready" }, trustedOrigin || "*");
+
+    // A stray opener that never sends a file (e.g. an unrelated tab that
+    // happened to open this one) shouldn't leave the page stuck loading.
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) setAutoLoadState("idle");
+    }, 15000);
 
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
+      window.removeEventListener("message", handleMessage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
