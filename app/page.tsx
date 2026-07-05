@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import {
   Package,
   CalendarDays,
@@ -49,8 +49,46 @@ export default function DashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(ALL_MONTHS);
   const [selectedDepartment, setSelectedDepartment] = useState<DepartmentFilter>(ALL_DEPARTMENTS);
   const [selectedItem, setSelectedItem] = useState<ItemData | null>(null);
+  const [autoLoadState, setAutoLoadState] = useState<"idle" | "loading" | "error">("idle");
+  const [autoLoadError, setAutoLoadError] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const uploaderRef = useRef<FileUploaderHandle>(null);
+
+  /** Lets another local app (e.g. a PHP page listing xlsx files) deep-link
+   * straight into a report: open `/?src=<url-encoded xlsx URL>` in a new
+   * tab and this loads it automatically instead of showing the upload UI.
+   * The file is fetched server-side via the API route, so cross-origin
+   * (different port) sources work fine. */
+  useEffect(() => {
+    const src = new URLSearchParams(window.location.search).get("src");
+    if (!src) return;
+
+    let cancelled = false;
+    setAutoLoadState("loading");
+    fetch(`/api/parse-xlsx?src=${encodeURIComponent(src)}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "เกิดข้อผิดพลาดในการอ่านไฟล์");
+        }
+        return (await res.json()) as DashboardData;
+      })
+      .then((d) => {
+        if (cancelled) return;
+        handleDataLoaded(d);
+        setAutoLoadState("idle");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setAutoLoadError(e instanceof Error ? e.message : "ไม่สามารถโหลดไฟล์ได้");
+        setAutoLoadState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Switching away from "รายละเอียดย่อย" (by any route — tab click, back
    * button, etc.) clears the selected item so the tab goes back to disabled
@@ -220,7 +258,13 @@ export default function DashboardPage() {
         )}
 
         {/* กล่องนำเข้า — แสดงเฉพาะตอนยังไม่มีข้อมูล */}
-        {!data && (
+        {!data && autoLoadState === "loading" && (
+          <div className="max-w-xl mx-auto py-24 text-center text-blue-600">
+            <Loader2 size={32} className="animate-spin mx-auto mb-3" />
+            <p className="text-sm font-medium">กำลังโหลดไฟล์...</p>
+          </div>
+        )}
+        {!data && autoLoadState !== "loading" && (
           <div className="space-y-2 max-w-xl mx-auto py-16">
             <div className="text-center mb-5">
               <div className="w-16 h-16 bg-white/70 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-white">
@@ -229,6 +273,11 @@ export default function DashboardPage() {
               <p className="text-gray-600 font-medium mb-1">ยังไม่มีข้อมูล</p>
               <p className="text-sm text-gray-400">กรุณานำเข้าไฟล์ Excel (.xlsx / .xls)</p>
             </div>
+            {autoLoadState === "error" && autoLoadError && (
+              <p className="text-xs text-red-500 text-center bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                {autoLoadError}
+              </p>
+            )}
             <PDFUploader
               ref={uploaderRef}
               onDataLoaded={handleDataLoaded}
