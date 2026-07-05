@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "ไม่พบข้อมูลในไฟล์ ตรวจสอบว่ามีหัวตาราง 'ชื่อเซต' อยู่ในชีท",
+            "ไม่พบข้อมูลในไฟล์ ตรวจสอบว่ามีหัวตาราง 'ชื่อเซต' หรือ 'รายการ' อยู่ในชีท",
         },
         { status: 422 }
       );

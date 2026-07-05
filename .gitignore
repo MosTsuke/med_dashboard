@@ -1,4 +1,6 @@
-node_modules
 node_modules/
-node_modules/
-node_modules/
+.next/
+test/
+_tmp_*
+.DS_Store
+*.tsbuildinfo

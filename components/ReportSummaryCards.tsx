@@ -2,38 +2,44 @@ import {
   Package,
   Building2,
   ClipboardList,
-  Banknote,
   DollarSign,
+  Layers,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
-import type { SummaryStats } from "@/types";
+import type { SummaryStats, ValueKind } from "@/types";
 
 interface Props {
   summary: SummaryStats;
+  valueKind?: ValueKind;
   className?: string;
 }
 
-export default function ReportSummaryCards({ summary, className = "" }: Props) {
+export default function ReportSummaryCards({ summary, valueKind, className = "" }: Props) {
+  const hasDepartments = summary.totalDepartments > 0;
+  const isMonetary = valueKind?.isMonetary ?? true;
+
   return (
     <div
-      className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 ${className}`}
+      className={`grid grid-cols-2 md:grid-cols-3 ${hasDepartments ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-3 ${className}`}
     >
       <StatCard
         variant="report"
         icon={Package}
         label="จำนวนรวมทั้งหมด"
         value={summary.totalItems}
-        unit="ชิ้น"
+        unit={valueKind?.quantityUnit ?? "ชิ้น"}
         color="blue"
       />
-      <StatCard
-        variant="report"
-        icon={Building2}
-        label="หน่วยงานทั้งหมด"
-        value={summary.totalDepartments || "—"}
-        unit={summary.totalDepartments ? "หน่วยงาน" : ""}
-        color="green"
-      />
+      {hasDepartments && (
+        <StatCard
+          variant="report"
+          icon={Building2}
+          label="หน่วยงานทั้งหมด"
+          value={summary.totalDepartments}
+          unit="หน่วยงาน"
+          color="green"
+        />
+      )}
       <StatCard
         variant="report"
         icon={ClipboardList}
@@ -44,20 +50,11 @@ export default function ReportSummaryCards({ summary, className = "" }: Props) {
       />
       <StatCard
         variant="report"
-        icon={Banknote}
-        label="ราคา/หน่วย"
-        value={summary.pricePerUnit}
-        decimals={2}
-        unit="บาท"
-        color="amber"
-      />
-      <StatCard
-        variant="report"
-        icon={DollarSign}
-        label="ราคารวมทั้งหมด"
+        icon={isMonetary ? DollarSign : Layers}
+        label={valueKind ? `${valueKind.totalLabel}ทั้งหมด` : "ราคารวมทั้งหมด"}
         value={summary.totalPrice}
-        decimals={2}
-        unit="บาท"
+        decimals={valueKind?.decimals ?? 2}
+        unit={valueKind?.unit ?? "บาท"}
         color="blue"
       />
     </div>

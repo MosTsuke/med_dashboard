@@ -10,20 +10,27 @@ import ReportSummaryCards from "@/components/ReportSummaryCards";
 import DepartmentBarChart from "@/components/DepartmentBarChart";
 import DepartmentPieChart from "@/components/DepartmentPieChart";
 import Top5Card from "@/components/Top5Card";
+import TopItemsCard from "@/components/TopItemsCard";
+import ItemBarChart from "@/components/ItemBarChart";
+import ItemPieChart from "@/components/ItemPieChart";
+import MonthlyTrendChart from "@/components/MonthlyTrendChart";
+import { formatPeriodValue } from "@/lib/monthlyView";
 import type { DashboardData } from "@/types";
 
 interface Props {
   data: DashboardData;
+  onMonthClick?: (month: string) => void;
 }
 
 const reportTitles: Record<DashboardData["reportType"], string> = {
   summary: "สรุปผลแยกตามหน่วยงาน",
   items: "รายงานตามปริมาณ",
+  monthly: "สถิติรายเดือน",
   unknown: "รายงานสรุปผล",
 };
 
 const DashboardReportView = forwardRef<HTMLDivElement, Props>(
-  function DashboardReportView({ data }, ref) {
+  function DashboardReportView({ data, onMonthClick }, ref) {
   const hasDepartments = data.departments.length > 0;
   const title =
     data.reportName?.trim() || reportTitles[data.reportType];
@@ -40,7 +47,7 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
       {/* Header: Logo + Title Banner */}
       <div className="p-5 md:p-6 pb-0">
         <div className="flex items-start gap-4">
-          <LogoPlaceholder src={data.logoUrl} />
+          {data.logoUrl && <LogoPlaceholder src={data.logoUrl} />}
           <div className="flex-1 min-w-0">
             <div
               className={`${REPORT_BANNER_BG} rounded-xl px-5 py-4 text-center shadow-sm`}
@@ -60,7 +67,8 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
                 <ReportNote className="text-xs md:text-sm">
                   <CalendarDays size={13} className="shrink-0" />
                   <span className="font-semibold">
-                    วันที่ {data.period.from} ถึง {data.period.to}
+                    {data.reportType === "monthly" ? "เดือน" : "วันที่"}{" "}
+                    {formatPeriodValue(data.period.from)} ถึง {formatPeriodValue(data.period.to)}
                     {data.fiscalYear && ` (ปีงบประมาณ ${data.fiscalYear})`}
                   </span>
                 </ReportNote>
@@ -74,6 +82,7 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
       <div className="mx-5 md:mx-6 mb-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
         <ReportSummaryCards
           summary={data.summary}
+          valueKind={data.valueKind}
           className="report-stats-grid"
         />
       </div>
@@ -96,6 +105,47 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
                 <DepartmentPieChart
                   data={data.departments}
                   total={data.summary.totalItems}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : data.reportType === "monthly" && (data.monthly?.length ?? 0) > 0 ? (
+        <div className="px-5 md:px-6 pb-6">
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+            <MonthlyTrendChart
+              data={data.monthly!}
+              onMonthClick={onMonthClick}
+              unit={data.valueKind?.quantityUnit}
+            />
+            <div className="report-charts-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="report-charts-main lg:col-span-2">
+                <ItemBarChart data={data.items} unit={data.valueKind?.quantityUnit} />
+              </div>
+              <div className="space-y-4">
+                <TopItemsCard data={data.items} unit={data.valueKind?.quantityUnit} />
+                <ItemPieChart
+                  data={data.items}
+                  total={data.summary.totalItems}
+                  unit={data.valueKind?.quantityUnit}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : data.items.length > 0 ? (
+        <div className="px-5 md:px-6 pb-6">
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="report-charts-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="report-charts-main lg:col-span-2">
+                <ItemBarChart data={data.items} unit={data.valueKind?.quantityUnit} />
+              </div>
+              <div className="space-y-4">
+                <TopItemsCard data={data.items} unit={data.valueKind?.quantityUnit} />
+                <ItemPieChart
+                  data={data.items}
+                  total={data.summary.totalItems}
+                  unit={data.valueKind?.quantityUnit}
                 />
               </div>
             </div>

@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import {
   Package,
   CalendarDays,
   UploadCloud,
   LayoutDashboard,
   TableProperties,
+  ListTree,
   X,
   Printer,
   Loader2,
-  Download,
+  CalendarRange,
+  Building2,
 } from "lucide-react";
 
 import PDFUploader, { type FileUploaderHandle } from "@/components/PDFUploader";
@@ -18,11 +20,23 @@ import DashboardReportView from "@/components/DashboardReportView";
 import ReportSummaryCards from "@/components/ReportSummaryCards";
 import DepartmentTable from "@/components/DepartmentTable";
 import ItemTable from "@/components/ItemTable";
+import ItemMonthlyDetail from "@/components/ItemMonthlyDetail";
+import SearchableSelect from "@/components/SearchableSelect";
 import { exportReportPdf } from "@/lib/exportReportPdf";
+import {
+  sliceByMonth,
+  sliceByDepartment,
+  formatMonthLabel,
+  formatPeriodValue,
+  ALL_MONTHS,
+  ALL_DEPARTMENTS,
+  type MonthFilter,
+  type DepartmentFilter,
+} from "@/lib/monthlyView";
 
-import type { DashboardData } from "@/types";
+import type { DashboardData, ItemData } from "@/types";
 
-type Tab = "dashboard" | "detail";
+type Tab = "dashboard" | "detail" | "subdetail";
 
 /** เปิดเป็น true เมื่อพร้อมใช้งาน export PDF อีกครั้ง */
 const ENABLE_PDF_EXPORT = false;
@@ -32,24 +46,69 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<MonthFilter>(ALL_MONTHS);
+  const [selectedDepartment, setSelectedDepartment] = useState<DepartmentFilter>(ALL_DEPARTMENTS);
+  const [selectedItem, setSelectedItem] = useState<ItemData | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
   const uploaderRef = useRef<FileUploaderHandle>(null);
+
+  /** Switching away from "รายละเอียดย่อย" (by any route — tab click, back
+   * button, etc.) clears the selected item so the tab goes back to disabled
+   * until the user picks a row again. */
+  const handleTabChange = (next: Tab) => {
+    if (tab === "subdetail" && next !== "subdetail") {
+      setSelectedItem(null);
+    }
+    setTab(next);
+  };
 
   const handleDataLoaded = (d: DashboardData) => {
     setData(d);
     setTab("dashboard");
+    setSelectedMonth(ALL_MONTHS);
+    setSelectedDepartment(ALL_DEPARTMENTS);
+    setSelectedItem(null);
   };
 
   const handleClearData = () => {
     setData(null);
     setTab("dashboard");
+    setSelectedMonth(ALL_MONTHS);
+    setSelectedDepartment(ALL_DEPARTMENTS);
+    setSelectedItem(null);
   };
 
-  const hasItems = (data?.items?.length ?? 0) > 0;
-  const hasDepartments = (data?.departments?.length ?? 0) > 0;
+  const hasMonthlyData = (data?.reportType === "monthly") && (data?.monthly?.length ?? 0) > 0;
+  const hasDepartmentFilter = (data?.departments?.length ?? 0) > 0;
+
+  const viewData = useMemo(() => {
+    if (!data) return null;
+    return sliceByDepartment(sliceByMonth(data, selectedMonth), selectedDepartment);
+  }, [data, selectedMonth, selectedDepartment]);
+
+  const hasItems = (viewData?.items?.length ?? 0) > 0;
+  const hasDepartments = (viewData?.departments?.length ?? 0) > 0;
 
   const handleImportClick = () => {
     uploaderRef.current?.openFilePicker();
+  };
+
+  const handleMonthClick = (month: string) => {
+    setSelectedMonth(month);
+    handleTabChange("detail");
+  };
+
+  const handleItemClick = (item: ItemData) => {
+    // `item` may come from a month-sliced view (`viewData.items`), whose
+    // quantity/totalPrice are recomputed for that single month only. The
+    // sub-detail view always shows the full fiscal year, so look up the
+    // matching full-year item from the unsliced `data`. `monthlyQuantity`
+    // is spread by reference in `sliceByMonth`, so it's a reliable key even
+    // when item names collide (e.g. blank-name placeholder rows).
+    const fullYearItem =
+      data?.items.find((i) => i.monthlyQuantity === item.monthlyQuantity) ?? item;
+    setSelectedItem(fullYearItem);
+    setTab("subdetail");
   };
 
   const handleExportPdf = async () => {
@@ -114,19 +173,10 @@ export default function DashboardPage() {
             {data?.period && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
                 <CalendarDays size={12} />
-                <span>{data.period.from} – {data.period.to}</span>
+                <span>
+                  {formatPeriodValue(data.period.from)} – {formatPeriodValue(data.period.to)}
+                </span>
               </div>
-            )}
-            {data && (
-              <a
-                href="/template-data.xlsx"
-                download="template-data.xlsx"
-                title="ดาวน์โหลดเทมเพลตข้อมูล"
-                className="flex items-center gap-1.5 text-xs text-gray-600 px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors"
-              >
-                <Download size={13} />
-                ดาวน์โหลดเทมเพลต
-              </a>
             )}
             {data && (
               <button
@@ -178,14 +228,6 @@ export default function DashboardPage() {
               </div>
               <p className="text-gray-600 font-medium mb-1">ยังไม่มีข้อมูล</p>
               <p className="text-sm text-gray-400">กรุณานำเข้าไฟล์ Excel (.xlsx / .xls)</p>
-              <a
-                href="/template-data.xlsx"
-                download="template-data.xlsx"
-                className="inline-flex items-center gap-2 mt-4 text-sm font-medium text-blue-600 px-4 py-2 border border-blue-200 bg-white/80 rounded-lg hover:bg-blue-50 transition-colors shadow-sm"
-              >
-                <Download size={16} />
-                ดาวน์โหลดเทมเพลตข้อมูล
-              </a>
             </div>
             <PDFUploader
               ref={uploaderRef}
@@ -205,7 +247,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-1 bg-white/60 backdrop-blur border border-white/80 rounded-xl p-1 w-fit shadow-sm">
                 <button
-                  onClick={() => setTab("dashboard")}
+                  onClick={() => handleTabChange("dashboard")}
                   className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
                     tab === "dashboard"
                       ? "bg-white text-blue-700 shadow-sm"
@@ -216,7 +258,7 @@ export default function DashboardPage() {
                   Dashboard
                 </button>
                 <button
-                  onClick={() => setTab("detail")}
+                  onClick={() => handleTabChange("detail")}
                   className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
                     tab === "detail"
                       ? "bg-white text-blue-700 shadow-sm"
@@ -226,40 +268,91 @@ export default function DashboardPage() {
                   <TableProperties size={15} />
                   รายละเอียด
                 </button>
-              </div>
-              {ENABLE_PDF_EXPORT && tab === "dashboard" && (
                 <button
-                  type="button"
-                  onClick={handleExportPdf}
-                  disabled={exporting}
-                  title="บันทึกเป็น PDF"
-                  className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white/80 backdrop-blur text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors shadow-sm disabled:opacity-50 shrink-0"
+                  onClick={() => selectedItem && setTab("subdetail")}
+                  disabled={!selectedItem}
+                  title={
+                    selectedItem
+                      ? `รายละเอียดรายเดือนของ "${selectedItem.name}"`
+                      : "คลิกที่รายการในแท็บรายละเอียดก่อน เพื่อดูรายละเอียดย่อยของรายการนั้น"
+                  }
+                  className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                    !selectedItem
+                      ? "text-gray-300 cursor-not-allowed"
+                      : tab === "subdetail"
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                  }`}
                 >
-                  {exporting ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <Printer size={18} />
-                  )}
+                  <ListTree size={15} />
+                  รายละเอียดย่อย
                 </button>
-              )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {hasDepartmentFilter && tab !== "subdetail" && (
+                  <SearchableSelect
+                    icon={Building2}
+                    value={selectedDepartment}
+                    onChange={setSelectedDepartment}
+                    searchPlaceholder="ค้นหาหน่วยงาน..."
+                    options={[
+                      { value: ALL_DEPARTMENTS, label: "ทุกหน่วยงาน" },
+                      ...data!.departments.map((dep) => ({ value: dep.name, label: dep.name })),
+                    ]}
+                  />
+                )}
+                {hasMonthlyData && tab !== "subdetail" && (
+                  <SearchableSelect
+                    icon={CalendarRange}
+                    value={selectedMonth}
+                    onChange={setSelectedMonth}
+                    widthClass="w-48"
+                    searchPlaceholder="ค้นหาเดือน..."
+                    options={[
+                      { value: ALL_MONTHS, label: "ทั้งปี" },
+                      ...data!.monthly!.map((m) => ({ value: m.month, label: formatMonthLabel(m.month) })),
+                    ]}
+                  />
+                )}
+                {ENABLE_PDF_EXPORT && tab === "dashboard" && (
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    disabled={exporting}
+                    title="บันทึกเป็น PDF"
+                    className="flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 bg-white/80 backdrop-blur text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors shadow-sm disabled:opacity-50 shrink-0"
+                  >
+                    {exporting ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Printer size={18} />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* ── DASHBOARD TAB ── */}
-            {tab === "dashboard" && data && (
-              <DashboardReportView ref={reportRef} data={data} />
+            {tab === "dashboard" && viewData && (
+              <DashboardReportView ref={reportRef} data={viewData} onMonthClick={handleMonthClick} />
             )}
 
             {/* ── DETAIL TAB ── */}
-            {tab === "detail" && (
+            {tab === "detail" && viewData && (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5 space-y-5">
                 <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
-                  <ReportSummaryCards summary={data.summary} />
+                  <ReportSummaryCards summary={viewData.summary} valueKind={viewData.valueKind} />
                 </div>
 
                 {hasItems ? (
-                  <ItemTable items={data.items} />
+                  <ItemTable
+                    items={viewData.items}
+                    onItemClick={handleItemClick}
+                    valueKind={viewData.valueKind}
+                  />
                 ) : hasDepartments ? (
-                  <DepartmentTable departments={data.departments} />
+                  <DepartmentTable departments={viewData.departments} />
                 ) : (
                   <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-gray-400 shadow-sm">
                     <TableProperties size={32} className="mx-auto mb-2 opacity-30" />
@@ -267,6 +360,16 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* ── SUB-DETAIL TAB ── */}
+            {tab === "subdetail" && selectedItem && data?.monthly && (
+              <ItemMonthlyDetail
+                item={selectedItem}
+                monthOrder={data.monthly.map((m) => m.month)}
+                onBack={() => handleTabChange("detail")}
+                valueKind={data.valueKind}
+              />
             )}
           </>
         )}

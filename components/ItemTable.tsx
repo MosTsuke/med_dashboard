@@ -1,40 +1,59 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Search } from "lucide-react";
+import { Search, AlertTriangle, ChevronRight } from "lucide-react";
 import { REPORT_BANNER_BG } from "@/components/ReportNote";
 import TablePagination, { type PageSize } from "@/components/TablePagination";
 import { formatNumber } from "@/lib/formatNumber";
-import type { ItemData } from "@/types";
+import type { ItemData, ValueKind } from "@/types";
 
 interface Props {
   items: ItemData[];
+  /** Called when a row with a per-month breakdown is clicked. Rows without
+   * `monthlyQuantity` (non monthly-matrix reports) aren't clickable. */
+  onItemClick?: (item: ItemData) => void;
+  /** Relabels the "ราคา/หน่วย" / "ราคารวม" columns for non-monetary reports
+   * (e.g. "สถิติล้าง" tracks pieces-per-set, not baht). */
+  valueKind?: ValueKind;
 }
 
-export default function ItemTable({ items }: Props) {
+/** Rows whose name in the source file was blank (see lib/parseXLSX.ts) get a
+ * placeholder like "(ไม่ระบุชื่อรายการ แถว 212)" — flag them so they're easy
+ * to spot/search without knowing that exact text. */
+function isUnnamed(item: ItemData): boolean {
+  return item.name.startsWith("(ไม่ระบุชื่อรายการ");
+}
+
+export default function ItemTable({ items, onItemClick, valueKind }: Props) {
+  const perUnitLabel = valueKind?.perUnitLabel ?? "ราคา/หน่วย";
+  const totalLabel = valueKind?.totalLabel ?? "ราคารวม";
+  const decimals = valueKind?.decimals ?? 2;
   const [query, setQuery] = useState("");
+  const [onlyUnnamed, setOnlyUnnamed] = useState(false);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<PageSize>(20);
 
   // Check if any item has department data
   const hasDept = items.some((i) => !!i.department);
+  const unnamedCount = useMemo(() => items.filter(isUnnamed).length, [items]);
 
   const filtered = useMemo(
     () =>
       items.filter((item) => {
+        if (onlyUnnamed && !isUnnamed(item)) return false;
         const q = query.toLowerCase();
         return (
           item.name.toLowerCase().includes(q) ||
           (item.department?.toLowerCase().includes(q) ?? false)
         );
       }),
-    [items, query]
+    [items, query, onlyUnnamed]
   );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const safePage = Math.min(page, totalPages);
   const paged = filtered.slice((safePage - 1) * perPage, safePage * perPage);
-  const colSpan = hasDept ? 6 : 5;
+  const colSpan = hasDept ? 7 : 6;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-md overflow-hidden">
@@ -42,21 +61,41 @@ export default function ItemTable({ items }: Props) {
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
           รายการอุปกรณ์ ({items.length} รายการ)
         </h2>
-        <div className="relative">
-          <Search
-            size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            placeholder="ค้นหารายการ / หน่วยงาน..."
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPage(1);
-            }}
-            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 w-56"
-          />
+        <div className="flex items-center gap-2">
+          {unnamedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setOnlyUnnamed((v) => !v);
+                setPage(1);
+              }}
+              title="รายการที่ไม่มีชื่อในไฟล์ต้นฉบับ แต่มีข้อมูลจำนวน/ราคาจริง"
+              className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
+                onlyUnnamed
+                  ? "bg-amber-100 text-amber-700 border-amber-300"
+                  : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
+              }`}
+            >
+              <AlertTriangle size={13} />
+              ไม่มีชื่อ ({unnamedCount})
+            </button>
+          )}
+          <div className="relative">
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              placeholder="ค้นหารายการ / หน่วยงาน..."
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 w-56"
+            />
+          </div>
         </div>
       </div>
 
@@ -79,24 +118,39 @@ export default function ItemTable({ items }: Props) {
                 จำนวน/หน่วย
               </th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-white uppercase tracking-wide w-28">
-                ราคา/หน่วย
+                {perUnitLabel}
               </th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-white uppercase tracking-wide w-28">
-                ราคารวม
+                {totalLabel}
               </th>
+              <th className="w-10" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {paged.map((item) => (
+            {paged.map((item) => {
+              const clickable = !!onItemClick && !!item.monthlyQuantity;
+              return (
               <tr
                 key={`${item.rank}-${item.name}`}
-                className="hover:bg-blue-50/30 transition-colors"
+                onClick={clickable ? () => onItemClick!(item) : undefined}
+                title={clickable ? "ดูรายละเอียดรายเดือนของรายการนี้" : undefined}
+                className={`hover:bg-blue-50/30 transition-colors ${clickable ? "cursor-pointer" : ""}`}
               >
                 <td className="px-4 py-3 text-gray-400 font-mono text-xs">
                   {item.rank}
                 </td>
                 <td className="px-4 py-3 text-gray-700 font-medium">
-                  {item.name}
+                  {isUnnamed(item) ? (
+                    <span
+                      className="inline-flex items-center gap-1 text-amber-700"
+                      title="ไม่มีชื่อในไฟล์ต้นฉบับ แต่มีข้อมูลจำนวน/ราคาจริง"
+                    >
+                      <AlertTriangle size={13} className="shrink-0" />
+                      {item.name}
+                    </span>
+                  ) : (
+                    item.name
+                  )}
                 </td>
                 {hasDept && (
                   <td className="px-4 py-3">
@@ -115,13 +169,17 @@ export default function ItemTable({ items }: Props) {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right text-gray-500">
-                  {formatNumber(item.pricePerUnit, { decimals: 2 })}
+                  {formatNumber(item.pricePerUnit, { decimals })}
                 </td>
                 <td className="px-4 py-3 text-right text-gray-500">
-                  {formatNumber(item.totalPrice, { decimals: 2 })}
+                  {formatNumber(item.totalPrice, { decimals })}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {clickable && <ChevronRight size={15} className="text-gray-300" />}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {paged.length === 0 && (
               <tr>
                 <td colSpan={colSpan} className="px-4 py-8 text-center text-gray-400">
