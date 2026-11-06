@@ -14,6 +14,7 @@ import {
   CalendarRange,
   Building2,
   ClipboardList,
+  FlaskConical,
 } from "lucide-react";
 
 import PDFUploader, { type FileUploaderHandle } from "@/components/PDFUploader";
@@ -414,6 +415,16 @@ export default function DashboardPage() {
         {/* Tab bar — shown only when data is loaded */}
         {data && (
           <>
+            {data.source?.demo && (
+              <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <FlaskConical size={16} className="shrink-0 mt-0.5" />
+                <p>
+                  <span className="font-semibold">ข้อมูลจำลองสำหรับสาธิต</span> — ชื่อรายการ หน่วยงาน
+                  เจ้าหน้าที่ และตัวเลขทั้งหมดเป็นข้อมูลสมมติ ไม่ใช่ข้อมูลของโรงพยาบาล
+                  เมื่อติดตั้งที่โรงพยาบาล หน้าจอเดียวกันนี้จะแสดงข้อมูลจริงจากระบบ CSSD
+                </p>
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-1 bg-white/60 backdrop-blur border border-white/80 rounded-xl p-1 w-fit shadow-sm">
                 <button

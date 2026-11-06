@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbErrorResponse, parseFiscalYear } from "@/lib/db/apiErrors";
-import { getSupplyRows } from "@/lib/db/supplyReport";
+import { supplyRows } from "@/lib/supply/source";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   try {
     return NextResponse.json(
-      await getSupplyRows({
+      await supplyRows({
         fy,
         month,
         department: p.get("department")?.slice(0, 100) || undefined,

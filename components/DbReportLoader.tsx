@@ -26,6 +26,7 @@ export default function DbReportLoader({
   currentFiscalYear,
 }: Props) {
   const [years, setYears] = useState<number[] | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
   const [yearsError, setYearsError] = useState<string | null>(null);
   const [fy, setFy] = useState<number | null>(currentFiscalYear ?? null);
   const [loading, setLoading] = useState(false);
@@ -37,6 +38,7 @@ export default function DbReportLoader({
       .then((r) => {
         if (cancelled) return;
         if (!r.configured) return setYears([]);
+        setIsDemo(!!r.demo);
         setYears(r.years);
         setFy((cur) => cur ?? r.years[0] ?? null);
       })
@@ -100,8 +102,13 @@ export default function DbReportLoader({
     <div className="bg-white/70 border border-white rounded-2xl p-4 shadow-sm space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
         <Database size={16} className="text-blue-500" />
-        ดึงสถิติจ่ายจากฐานข้อมูล CSSD
+        {isDemo ? "ดูตัวอย่างสถิติจ่าย (ข้อมูลจำลอง)" : "ดึงสถิติจ่ายจากฐานข้อมูล CSSD"}
       </div>
+      {isDemo && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          เว็บนี้ไม่ได้ต่อฐานข้อมูลของโรงพยาบาล ชื่อรายการ หน่วยงาน และตัวเลขทั้งหมดเป็นข้อมูลสมมติสำหรับสาธิต
+        </p>
+      )}
       {yearsError ? (
         <p className="flex items-start gap-1.5 text-xs text-red-500">
           <AlertCircle size={14} className="shrink-0 mt-px" />

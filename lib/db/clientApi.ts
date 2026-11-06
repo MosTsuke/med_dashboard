@@ -10,7 +10,7 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 export function fetchSupplyYears() {
-  return getJson<{ configured: boolean; years: number[] }>("/api/db/supply/years");
+  return getJson<{ configured: boolean; demo?: boolean; years: number[] }>("/api/db/supply/years");
 }
 
 export function fetchSupplyReport(fy: number) {

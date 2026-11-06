@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbErrorResponse, parseFiscalYear } from "@/lib/db/apiErrors";
-import { getSupplyReport } from "@/lib/db/supplyReport";
+import { supplyReport } from "@/lib/supply/source";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "ระบุปีงบประมาณ (พ.ศ.) เช่น ?fy=2568" }, { status: 400 });
   }
   try {
-    return NextResponse.json(await getSupplyReport(fy));
+    return NextResponse.json(await supplyReport(fy));
   } catch (err) {
     return dbErrorResponse(err, `supply report fy=${fy}`);
   }

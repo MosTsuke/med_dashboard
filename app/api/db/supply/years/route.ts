@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
-import { isDbConfigured } from "@/lib/db/client";
 import { dbErrorResponse } from "@/lib/db/apiErrors";
-import { getSupplyFiscalYears } from "@/lib/db/supplyReport";
+import { fiscalYears, supplySource } from "@/lib/supply/source";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * GET /api/db/supply/years → { configured, years }. The UI calls this first:
- * `configured: false` just hides the "ดึงจากฐานข้อมูล" option (file import
- * keeps working without a database).
+ * GET /api/db/supply/years → { configured, demo, years }. The UI calls this
+ * first: `configured: false` just hides the "ดึงจากฐานข้อมูล" option (file
+ * import keeps working without a database); `demo: true` means the years
+ * and everything after them are made-up demo data.
  */
 export async function GET() {
-  if (!isDbConfigured()) {
-    return NextResponse.json({ configured: false, years: [] });
+  const source = supplySource();
+  if (source === "none") {
+    return NextResponse.json({ configured: false, demo: false, years: [] });
   }
   try {
-    return NextResponse.json({ configured: true, years: await getSupplyFiscalYears() });
+    return NextResponse.json({ configured: true, demo: source === "demo", years: await fiscalYears() });
   } catch (err) {
     return dbErrorResponse(err, "supply fiscal years");
   }

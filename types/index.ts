@@ -66,7 +66,8 @@ export interface DashboardData {
   valueKind?: ValueKind;
   reportType: "summary" | "items" | "monthly" | "unknown";
   /** Where the data came from. Absent = an imported file. */
-  source?: { kind: "db"; report: "supply"; fiscalYear: number };
+  /** `demo: true` = built-in made-up data (see lib/supply/demo.ts), not the hospital's. */
+  source?: { kind: "db"; report: "supply"; fiscalYear: number; demo?: boolean };
 }
 
 /** One dispense record for the "รายการจ่าย" table (DB-backed reports only). */
