@@ -1,10 +1,10 @@
 -- =====================================================================
 -- MOCK of the hospital's CSSD database (SQL Server 2019 Express).
 --
--- Rebuilt from screenshots only — NOT the real schema. Every table/column
--- below that wasn't visible in the screenshots is marked "GUESS"; those are
--- exactly the parts to replace once the real .bak / schema script arrives.
--- Keep lib/db/cssdQueries.ts in sync with any rename here.
+-- Mirrors the REAL schema (from a database export the hospital provided,
+-- 2026-11) for the columns the dashboard reads — names, types and
+-- meaning match; the real tables have more columns than these.
+-- Keep lib/db/cssdQueries.ts in sync with any change here.
 -- =====================================================================
 
 IF DB_ID(N'CSSD') IS NOT NULL
@@ -20,52 +20,56 @@ GO
 USE CSSD;
 GO
 
--- หน่วยงาน (seen in screenshot)
 CREATE TABLE dbo.DepartTb (
-  DepartTbId   INT           NOT NULL PRIMARY KEY,
-  DepartTbName NVARCHAR(100) NULL
+  DepartTbId   SMALLINT    NOT NULL PRIMARY KEY,
+  DepartTbName VARCHAR(30) NULL
 );
 
--- เจ้าหน้าที่ (seen in screenshot)
 CREATE TABLE dbo.PersonTb (
-  PersonTbId INT           NOT NULL PRIMARY KEY,
-  PersonCall NVARCHAR(100) NULL
+  PersonTbId TINYINT     NOT NULL PRIMARY KEY,
+  PersonCall VARCHAR(20) NULL
 );
 
--- อายุการใช้งาน / วันหมดอายุ (seen in screenshot; the name column was cut
--- off as "DayCountTbN..." — assumed DayCountTbName, holding a day count)
+-- Shelf-life choices (days). Not read by the dashboard: each pack carries
+-- its own expiry date (PackTb.SetTbExpireDate).
 CREATE TABLE dbo.DayCountTb (
-  DayCountTbId   INT          NOT NULL PRIMARY KEY,
-  DayCountTbName NVARCHAR(50) NULL
+  DayCountTbId   TINYINT  NOT NULL PRIMARY KEY,
+  DayCountTbName SMALLINT NULL
 );
 
--- GUESS: whole table. The item names in the existing "สถิติจ่าย" Excel report
--- are set names (e.g. "กรรไกรตัดก๊อส(14วัน)") with a unit price, and PackTb
--- (as screenshotted) has no name column — so the name/price must come from
--- somewhere like SetTb. Column names follow the DB's "<Table>Name" pattern.
+-- Sets and consumables. SetTbName1 is a short code, SetTbName2 the display
+-- name. Consumables (สำลี, ผ้าก๊อซ, ...) use ids 5001+.
 CREATE TABLE dbo.SetTb (
-  SetTbId    INT            NOT NULL PRIMARY KEY,
-  SetTbName  NVARCHAR(200)  NULL,
-  SetTbPrice DECIMAL(12, 2) NULL
+  SetTbId    SMALLINT    NOT NULL PRIMARY KEY,
+  SetTbName1 VARCHAR(20) NULL,
+  SetTbName2 VARCHAR(60) NULL,
+  SetTbPrice MONEY       NULL
 );
 
--- แพ็ค/ชิ้นที่มีบาร์โค้ด (PackTbNo + PackBarcode seen in screenshot)
+-- One row per physical pack (barcode). PackTbNo 0 is the placeholder
+-- "pack" that consumable dispenses point at (no set, no expiry).
 CREATE TABLE dbo.PackTb (
-  PackTbNo    INT          NOT NULL PRIMARY KEY,
-  PackBarcode NVARCHAR(50) NULL,
-  SetTbId     INT          NULL  -- GUESS: link from a pack to its set
+  PackTbNo        INT      NOT NULL PRIMARY KEY,
+  PackBarcode     INT      NULL,
+  SetTbPackDate   DATE     NULL,
+  SetTbId         SMALLINT NULL,
+  SetTbCountDate  SMALLINT NULL,
+  SetTbExpireDate DATE     NULL,
+  SetTbPrice      MONEY    NULL
 );
 
--- การจ่าย (all columns seen in screenshot; "SuplyCount" really is spelled
--- without the second "p" in the source DB)
+-- Dispenses. Barcoded pack: PackTbNo = that pack, SuplyCount = 1.
+-- Consumable: PackTbNo = 0, SuplyCount = quantity handed out.
+-- ("SuplyCount" really is spelled without the second "p".)
 CREATE TABLE dbo.SupplyTb (
-  SupplyNo    INT          NOT NULL PRIMARY KEY,
-  PackTbNo    INT          NULL,
-  DepartTbId  INT          NULL,
-  PersonTbId  INT          NULL,
-  SupplyDate  DATETIME     NULL,
-  SupplyLabel NVARCHAR(50) NULL,
-  SuplyCount  INT          NULL
+  SupplyNo    INT      NOT NULL PRIMARY KEY,
+  PackTbNo    INT      NULL,
+  DepartTbId  SMALLINT NULL,
+  PersonTbId  TINYINT  NULL,
+  SupplyDate  DATETIME NULL,
+  SupplyLabel SMALLINT NULL,
+  SuplyCount  INT      NULL,
+  SetTbId     SMALLINT NULL
 );
 
 CREATE INDEX IX_SupplyTb_SupplyDate ON dbo.SupplyTb (SupplyDate);

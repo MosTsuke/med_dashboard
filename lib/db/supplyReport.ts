@@ -54,7 +54,8 @@ function rangeForMonth(key: string): { from: Date; to: Date } {
 }
 
 function itemNameFor(setId: number | null, setName: string | null): string {
-  if (setId == null) return "(ไม่ระบุชื่อรายการ — แพ็คไม่ผูกกับเซต)";
+  if (setId == null) return "(ไม่ระบุชื่อรายการ — ไม่มีรหัสเซต)";
+  // A null name with a set id = the set was deleted from SetTb afterwards.
   const name = setName?.trim();
   return name || `(ไม่ระบุชื่อรายการ รหัสเซต ${setId})`;
 }
@@ -85,7 +86,10 @@ export async function getSupplyFiscalYears(): Promise<number[]> {
 interface AggregateRow {
   setId: number | null;
   setName: string | null;
-  price: number | null;
+  /** Current price in SetTb — NULL when the set has since been deleted. */
+  setPrice: number | null;
+  /** Price stamped on the dispensed packs (barcoded packs only). */
+  packPrice: number | null;
   department: string | null;
   y: number;
   m: number;
@@ -125,13 +129,20 @@ export async function getSupplyReport(fy: number): Promise<DashboardData> {
         rank: 0,
         name: itemNameFor(r.setId, r.setName),
         quantity: 0,
-        pricePerUnit: Number(r.price ?? 0),
+        pricePerUnit: 0,
         totalPrice: 0,
         monthlyQuantity: emptyMonths(),
         departmentMonthlyQuantity: {},
       };
       items.set(key, item);
     }
+    // One price per item (the app recomputes totals as qty × price when
+    // slicing): SetTb's current price, else the highest price stamped on a
+    // pack of a set that's no longer in SetTb.
+    item.pricePerUnit =
+      r.setPrice != null
+        ? Number(r.setPrice)
+        : Math.max(item.pricePerUnit, Number(r.packPrice ?? 0));
     item.quantity += qty;
     item.monthlyQuantity![month] = (item.monthlyQuantity![month] ?? 0) + qty;
     const byDept = (item.departmentMonthlyQuantity![dept] ??= emptyMonths());
@@ -199,8 +210,10 @@ interface RawSupplyRow {
   supplyDate: Date;
   setId: number | null;
   setName: string | null;
-  barcode: string | null;
-  expiryDays: number | null;
+  barcode: number | string | null;
+  quantity: number;
+  /** DATE column (PackTb.SetTbExpireDate); NULL for consumables. */
+  expiryDate: Date | null;
   department: string | null;
   person: string | null;
 }
@@ -233,20 +246,16 @@ export async function getSupplyRows(q: SupplyRowsQuery): Promise<SupplyRowsPage>
       .query<RawSupplyRow>(SUPPLY_ROWS_SQL),
   ]);
 
-  const rows: SupplyRow[] = rowsResult.recordset.map((r) => {
-    const expiry =
-      r.expiryDays != null ? new Date(r.supplyDate.getTime() + r.expiryDays * 86_400_000) : null;
-    return {
-      supplyNo: r.supplyNo,
-      supplyDate: formatDateTime(r.supplyDate),
-      itemName: itemNameFor(r.setId, r.setName),
-      barcode: r.barcode,
-      expiryDays: r.expiryDays,
-      expiryDate: expiry ? formatDate(expiry) : null,
-      department: r.department?.trim() || UNKNOWN_DEPARTMENT,
-      person: r.person?.trim() || "-",
-    };
-  });
+  const rows: SupplyRow[] = rowsResult.recordset.map((r) => ({
+    supplyNo: r.supplyNo,
+    supplyDate: formatDateTime(r.supplyDate),
+    itemName: itemNameFor(r.setId, r.setName),
+    barcode: r.barcode != null ? String(r.barcode) : null,
+    quantity: Number(r.quantity),
+    expiryDate: r.expiryDate ? formatDate(r.expiryDate) : null,
+    department: r.department?.trim() || UNKNOWN_DEPARTMENT,
+    person: r.person?.trim() || "-",
+  }));
 
   return { rows, total: countResult.recordset[0]?.total ?? 0 };
 }

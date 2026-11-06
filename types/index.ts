@@ -75,10 +75,11 @@ export interface SupplyRow {
   /** Wall-clock "YYYY-MM-DD HH:mm" exactly as stored in the DB. */
   supplyDate: string;
   itemName: string;
+  /** Pack barcode; null for consumables (dispensed without a pack). */
   barcode: string | null;
-  /** Shelf-life days from DayCountTb, if the join resolved. */
-  expiryDays: number | null;
-  /** supplyDate + expiryDays, "YYYY-MM-DD" — see ASSUMPTIONS in lib/db/cssdQueries.ts. */
+  /** Pieces in this dispense — 1 for a barcoded pack, can be more for consumables. */
+  quantity: number;
+  /** Pack expiry "YYYY-MM-DD" (PackTb.SetTbExpireDate); null for consumables. */
   expiryDate: string | null;
   department: string;
   person: string;

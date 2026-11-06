@@ -110,6 +110,7 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
             <tr className={`${REPORT_BANNER_BG} border-b border-blue-900/20`}>
               <th className={`${th} w-44`}>วันที่จ่าย</th>
               <th className={th}>ชื่อรายการ</th>
+              <th className={`${th} w-20 text-right`}>จำนวน</th>
               <th className={`${th} w-40`}>วันหมดอายุ</th>
               <th className={`${th} w-40`}>หน่วยงานที่จ่ายให้</th>
               <th className={`${th} w-36`}>เจ้าหน้าที่</th>
@@ -123,14 +124,24 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
                   <span className="font-medium">{r.itemName}</span>
                   {r.barcode && <span className="ml-2 text-xs text-gray-400 font-mono">{r.barcode}</span>}
                 </td>
+                <td className="px-4 py-2.5 text-right font-semibold text-blue-700 tabular-nums">
+                  {r.quantity.toLocaleString()}
+                </td>
                 <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap tabular-nums">
                   {r.expiryDate ? (
-                    <>
-                      {formatThaiDate(r.expiryDate)}
-                      <span className="ml-1 text-xs text-gray-400">({r.expiryDays} วัน)</span>
-                    </>
+                    // Same-format "YYYY-MM-DD" strings compare correctly as text.
+                    r.expiryDate < r.supplyDate.slice(0, 10) ? (
+                      <span className="text-red-600" title="วันที่จ่ายเลยวันหมดอายุของแพ็คนี้แล้ว">
+                        {formatThaiDate(r.expiryDate)}
+                        <span className="ml-1.5 text-[11px] font-medium bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                          จ่ายหลังหมดอายุ
+                        </span>
+                      </span>
+                    ) : (
+                      formatThaiDate(r.expiryDate)
+                    )
                   ) : (
-                    <span className="text-gray-300">—</span>
+                    <span className="text-gray-300" title="ของสิ้นเปลือง ไม่มีวันหมดอายุ">—</span>
                   )}
                 </td>
                 <td className="px-4 py-2.5">
@@ -143,7 +154,7 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
             ))}
             {result && result.rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                   ไม่พบรายการ
                 </td>
               </tr>
@@ -163,7 +174,7 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
 
       <p className="flex items-start gap-1.5 px-5 py-3 text-xs text-gray-400 border-t border-slate-100">
         <Info size={13} className="shrink-0 mt-px" />
-        วันหมดอายุ = วันที่จ่าย + จำนวนวันจากตาราง DayCountTb (ผูกผ่านคอลัมน์ SuplyCount) — รอยืนยันวิธีคำนวณกับทีม CSSD
+        วันหมดอายุมาจากแพ็คที่จ่าย ของสิ้นเปลือง (สำลี ผ้าก๊อซ ฯลฯ) ไม่มีบาร์โค้ดและวันหมดอายุ จึงแสดงเป็น —
       </p>
     </div>
   );
