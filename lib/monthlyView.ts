@@ -58,25 +58,55 @@ export function sliceByMonth(data: DashboardData, month: MonthFilter): Dashboard
   const totalPrice = items.reduce((s, i) => s + i.totalPrice, 0);
   const pricePerUnit = items.reduce((s, i) => s + i.pricePerUnit, 0);
 
+  // DB-backed reports also carry a department breakdown — rescope it to
+  // this month too so the department charts agree with the item charts.
+  const departments =
+    data.departments.length > 0 && items.some((i) => i.departmentMonthlyQuantity)
+      ? departmentsFromItems(items, (perMonth) => perMonth[month] ?? 0, totalItems)
+      : data.departments;
+
   return {
     ...data,
     items,
+    departments,
     summary: {
       ...data.summary,
       totalItems,
       totalPrice,
       pricePerUnit,
       totalSets: items.length,
+      totalDepartments: departments.length || data.summary.totalDepartments,
     },
   };
+}
+
+/** Department totals from items' per-department monthly quantities. */
+function departmentsFromItems(
+  items: DashboardData["items"],
+  pick: (perMonth: Record<string, number>) => number,
+  total: number
+): DashboardData["departments"] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    for (const [dept, perMonth] of Object.entries(item.departmentMonthlyQuantity ?? {})) {
+      const n = pick(perMonth);
+      if (n) counts.set(dept, (counts.get(dept) ?? 0) + n);
+    }
+  }
+  return Array.from(counts, ([name, count]) => ({
+    name,
+    count,
+    percentage: total ? (count / total) * 100 : 0,
+  })).sort((a, b) => b.count - a.count);
 }
 
 export const ALL_DEPARTMENTS = "all" as const;
 export type DepartmentFilter = string | typeof ALL_DEPARTMENTS;
 
 /**
- * Returns a view of `data` scoped to a single department (Resterile-list
- * reports only, where each item carries a `department`). Drops the
+ * Returns a view of `data` scoped to a single department — Resterile-list
+ * reports (each item carries a `department`) or DB-backed monthly reports
+ * (each item carries `departmentMonthlyQuantity`). Drops the
  * department breakdown and re-ranks the filtered items, so the dashboard
  * falls back to the item-based charts (bar/pie/top 5) for that one
  * department instead of the department-level overview. Anything without a
@@ -84,6 +114,10 @@ export type DepartmentFilter = string | typeof ALL_DEPARTMENTS;
  */
 export function sliceByDepartment(data: DashboardData, department: DepartmentFilter): DashboardData {
   if (department === ALL_DEPARTMENTS || data.departments.length === 0) return data;
+
+  if (data.items.some((i) => i.departmentMonthlyQuantity)) {
+    return sliceMonthlyByDepartment(data, department);
+  }
 
   const items = data.items
     .filter((item) => item.department === department)
@@ -98,6 +132,56 @@ export function sliceByDepartment(data: DashboardData, department: DepartmentFil
     ...data,
     departments: [],
     items,
+    summary: {
+      ...data.summary,
+      totalItems,
+      totalPrice,
+      pricePerUnit,
+      totalDepartments: 1,
+      totalSets: items.length,
+    },
+  };
+}
+
+/**
+ * Department slice for DB-backed monthly reports: every item's monthly
+ * breakdown is swapped for that one department's, so the month filter, the
+ * trend chart and the per-item "รายละเอียดย่อย" all follow the department.
+ * Apply this BEFORE `sliceByMonth`.
+ */
+function sliceMonthlyByDepartment(data: DashboardData, department: string): DashboardData {
+  const monthKeys = (data.monthly ?? []).map((m) => m.month);
+
+  const items = data.items
+    .map((item) => {
+      const monthlyQuantity = item.departmentMonthlyQuantity?.[department] ?? {};
+      const quantity = Object.values(monthlyQuantity).reduce((s, n) => s + n, 0);
+      return {
+        ...item,
+        monthlyQuantity,
+        departmentMonthlyQuantity: undefined,
+        quantity,
+        totalPrice: quantity * item.pricePerUnit,
+      };
+    })
+    .filter((item) => item.quantity > 0)
+    .sort((a, b) => b.quantity - a.quantity)
+    .map((item, i) => ({ ...item, rank: i + 1 }));
+
+  const monthly = monthKeys.map((month) => ({
+    month,
+    quantity: items.reduce((s, i) => s + (i.monthlyQuantity[month] ?? 0), 0),
+  }));
+
+  const totalItems = items.reduce((s, i) => s + i.quantity, 0);
+  const totalPrice = items.reduce((s, i) => s + i.totalPrice, 0);
+  const pricePerUnit = items.reduce((s, i) => s + i.pricePerUnit, 0);
+
+  return {
+    ...data,
+    departments: [],
+    items,
+    monthly,
     summary: {
       ...data.summary,
       totalItems,

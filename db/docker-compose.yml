@@ -1,0 +1,29 @@
+# Local MOCK of the hospital's CSSD SQL Server — for development only.
+# Same major version as production (SQL Server 2019 / 15.x). On Apple
+# Silicon it runs as amd64 under Docker Desktop's Rosetta emulation.
+#
+#   docker compose -f db/docker-compose.yml up -d
+#   ./db/mock/load.sh            # create schema + mock data + read-only login
+#
+# The SA password is a throwaway for this local container; the port is bound
+# to 127.0.0.1 so nothing outside this machine can reach it.
+services:
+  cssd-sql:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    platform: linux/amd64
+    container_name: cssd-mock-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "MockCssd#2568dev"
+      MSSQL_PID: "Express"
+      MSSQL_COLLATION: "Thai_CI_AS"
+    ports:
+      - "127.0.0.1:1433:1433"
+    # No bind mount for the SQL scripts: load.sh copies them in with
+    # `docker cp`, which also works when Docker isn't allowed to read the
+    # project folder (e.g. macOS privacy rules on ~/Desktop).
+    volumes:
+      - cssd-mock-data:/var/opt/mssql
+
+volumes:
+  cssd-mock-data:

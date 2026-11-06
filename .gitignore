@@ -4,3 +4,5 @@ test/
 _tmp_*
 .DS_Store
 *.tsbuildinfo
+.env*.local
+db/mock/generated/

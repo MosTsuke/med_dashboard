@@ -15,6 +15,10 @@ export interface ItemData {
   totalPrice: number;
   /** Per-month quantity breakdown (monthly-matrix reports only), e.g. { "2567-10": 12 } */
   monthlyQuantity?: Record<string, number>;
+  /** Per-department, per-month quantity (DB-backed reports only), e.g.
+   * { "ER": { "2567-10": 3 } }. Lets the department filter slice a monthly
+   * report — Excel monthly reports have no department breakdown at all. */
+  departmentMonthlyQuantity?: Record<string, Record<string, number>>;
 }
 
 export interface SummaryStats {
@@ -61,4 +65,26 @@ export interface DashboardData {
   /** Only set for reportType "monthly" when the source has no real pricing column. */
   valueKind?: ValueKind;
   reportType: "summary" | "items" | "monthly" | "unknown";
+  /** Where the data came from. Absent = an imported file. */
+  source?: { kind: "db"; report: "supply"; fiscalYear: number };
+}
+
+/** One dispense record for the "รายการจ่าย" table (DB-backed reports only). */
+export interface SupplyRow {
+  supplyNo: number;
+  /** Wall-clock "YYYY-MM-DD HH:mm" exactly as stored in the DB. */
+  supplyDate: string;
+  itemName: string;
+  barcode: string | null;
+  /** Shelf-life days from DayCountTb, if the join resolved. */
+  expiryDays: number | null;
+  /** supplyDate + expiryDays, "YYYY-MM-DD" — see ASSUMPTIONS in lib/db/cssdQueries.ts. */
+  expiryDate: string | null;
+  department: string;
+  person: string;
+}
+
+export interface SupplyRowsPage {
+  rows: SupplyRow[];
+  total: number;
 }

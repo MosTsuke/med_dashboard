@@ -13,6 +13,7 @@ import {
   Loader2,
   CalendarRange,
   Building2,
+  ClipboardList,
 } from "lucide-react";
 
 import PDFUploader, { type FileUploaderHandle } from "@/components/PDFUploader";
@@ -22,6 +23,9 @@ import DepartmentTable from "@/components/DepartmentTable";
 import ItemTable from "@/components/ItemTable";
 import ItemMonthlyDetail from "@/components/ItemMonthlyDetail";
 import SearchableSelect from "@/components/SearchableSelect";
+import DbReportLoader from "@/components/DbReportLoader";
+import SupplyRowsTable from "@/components/SupplyRowsTable";
+import { fetchSupplyReport } from "@/lib/db/clientApi";
 import { exportReportPdf } from "@/lib/exportReportPdf";
 import {
   sliceByMonth,
@@ -36,7 +40,7 @@ import {
 
 import type { DashboardData, ItemData } from "@/types";
 
-type Tab = "dashboard" | "detail" | "subdetail";
+type Tab = "dashboard" | "detail" | "subdetail" | "records";
 
 /** เปิดเป็น true เมื่อพร้อมใช้งาน export PDF อีกครั้ง */
 const ENABLE_PDF_EXPORT = false;
@@ -55,7 +59,7 @@ export default function DashboardPage() {
   const uploaderRef = useRef<FileUploaderHandle>(null);
 
   /** Lets another local app (e.g. a PHP page listing xlsx files) deep-link
-   * straight into a report, two ways:
+   * straight into a report, three ways (the DB one, 3, is checked first):
    *
    * 1. `/?src=<url-encoded xlsx URL>` — this page's own server fetches
    *    that URL and parses it. Simple, but only works if the file is
@@ -71,7 +75,35 @@ export default function DashboardPage() {
    *    snippet.
    */
   useEffect(() => {
-    const src = new URLSearchParams(window.location.search).get("src");
+    const params = new URLSearchParams(window.location.search);
+
+    // 3. `/?db=supply&fy=2568` — straight from the CSSD database.
+    if (params.get("db") === "supply") {
+      const fy = Number(params.get("fy"));
+      if (!Number.isInteger(fy)) {
+        setAutoLoadError("ระบุปีงบประมาณใน URL เช่น ?db=supply&fy=2568");
+        setAutoLoadState("error");
+        return;
+      }
+      let cancelled = false;
+      setAutoLoadState("loading");
+      fetchSupplyReport(fy)
+        .then((d) => {
+          if (cancelled) return;
+          handleDataLoaded(d);
+          setAutoLoadState("idle");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setAutoLoadError(e instanceof Error ? e.message : "ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ");
+          setAutoLoadState("error");
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const src = params.get("src");
 
     if (src) {
       let cancelled = false;
@@ -188,10 +220,19 @@ export default function DashboardPage() {
   const hasMonthlyData = (data?.reportType === "monthly") && (data?.monthly?.length ?? 0) > 0;
   const hasDepartmentFilter = (data?.departments?.length ?? 0) > 0;
 
-  const viewData = useMemo(() => {
-    if (!data) return null;
-    return sliceByDepartment(sliceByMonth(data, selectedMonth), selectedDepartment);
-  }, [data, selectedMonth, selectedDepartment]);
+  // Department first, then month: for DB-backed reports the department slice
+  // swaps each item's monthly breakdown, which the month slice then reads.
+  // (Excel reports only ever have one of the two dimensions, so the order
+  // makes no difference for them.)
+  const departmentView = useMemo(
+    () => (data ? sliceByDepartment(data, selectedDepartment) : null),
+    [data, selectedDepartment]
+  );
+  const viewData = useMemo(
+    () => (departmentView ? sliceByMonth(departmentView, selectedMonth) : null),
+    [departmentView, selectedMonth]
+  );
+  const dbFiscalYear = data?.source?.kind === "db" ? data.source.fiscalYear : null;
 
   const hasItems = (viewData?.items?.length ?? 0) > 0;
   const hasDepartments = (viewData?.departments?.length ?? 0) > 0;
@@ -209,11 +250,11 @@ export default function DashboardPage() {
     // `item` may come from a month-sliced view (`viewData.items`), whose
     // quantity/totalPrice are recomputed for that single month only. The
     // sub-detail view always shows the full fiscal year, so look up the
-    // matching full-year item from the unsliced `data`. `monthlyQuantity`
-    // is spread by reference in `sliceByMonth`, so it's a reliable key even
-    // when item names collide (e.g. blank-name placeholder rows).
+    // matching full-year item from the department view (not month-sliced).
+    // `monthlyQuantity` is spread by reference in `sliceByMonth`, so it's a
+    // reliable key even when item names collide (e.g. blank-name rows).
     const fullYearItem =
-      data?.items.find((i) => i.monthlyQuantity === item.monthlyQuantity) ?? item;
+      departmentView?.items.find((i) => i.monthlyQuantity === item.monthlyQuantity) ?? item;
     setSelectedItem(fullYearItem);
     setTab("subdetail");
   };
@@ -285,6 +326,14 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
+            {dbFiscalYear && (
+              <DbReportLoader
+                variant="compact"
+                currentFiscalYear={dbFiscalYear}
+                onDataLoaded={handleDataLoaded}
+                onLoadingChange={setImporting}
+              />
+            )}
             {data && (
               <button
                 onClick={handleClearData}
@@ -330,7 +379,7 @@ export default function DashboardPage() {
         {!data && autoLoadState === "loading" && (
           <div className="max-w-xl mx-auto py-24 text-center text-blue-600">
             <Loader2 size={32} className="animate-spin mx-auto mb-3" />
-            <p className="text-sm font-medium">กำลังโหลดไฟล์...</p>
+            <p className="text-sm font-medium">กำลังโหลดข้อมูล...</p>
           </div>
         )}
         {!data && autoLoadState !== "loading" && (
@@ -356,6 +405,9 @@ export default function DashboardPage() {
               รองรับเฉพาะไฟล์ <span className="font-medium">.xlsx</span> และ{" "}
               <span className="font-medium">.xls</span>
             </p>
+            <div className="pt-4">
+              <DbReportLoader onDataLoaded={handleDataLoaded} onLoadingChange={setImporting} />
+            </div>
           </div>
         )}
 
@@ -405,6 +457,19 @@ export default function DashboardPage() {
                   <ListTree size={15} />
                   รายละเอียดย่อย
                 </button>
+                {dbFiscalYear && (
+                  <button
+                    onClick={() => handleTabChange("records")}
+                    className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                      tab === "records"
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                  >
+                    <ClipboardList size={15} />
+                    รายการจ่าย
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -480,6 +545,15 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* ── RECORDS TAB (DB-backed reports only) ── */}
+            {tab === "records" && dbFiscalYear && (
+              <SupplyRowsTable
+                fiscalYear={dbFiscalYear}
+                month={selectedMonth === ALL_MONTHS ? undefined : selectedMonth}
+                department={selectedDepartment === ALL_DEPARTMENTS ? undefined : selectedDepartment}
+              />
+            )}
+
             {/* ── SUB-DETAIL TAB ── */}
             {tab === "subdetail" && selectedItem && data?.monthly && (
               <ItemMonthlyDetail
@@ -487,6 +561,9 @@ export default function DashboardPage() {
                 monthOrder={data.monthly.map((m) => m.month)}
                 onBack={() => handleTabChange("detail")}
                 valueKind={data.valueKind}
+                department={
+                  dbFiscalYear && selectedDepartment !== ALL_DEPARTMENTS ? selectedDepartment : undefined
+                }
               />
             )}
           </>

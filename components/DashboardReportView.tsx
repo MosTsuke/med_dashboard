@@ -32,6 +32,7 @@ const reportTitles: Record<DashboardData["reportType"], string> = {
 const DashboardReportView = forwardRef<HTMLDivElement, Props>(
   function DashboardReportView({ data, onMonthClick }, ref) {
   const hasDepartments = data.departments.length > 0;
+  const isMonthly = data.reportType === "monthly" && (data.monthly?.length ?? 0) > 0;
   const title =
     data.reportName?.trim() || reportTitles[data.reportType];
   const hospital = data.hospitalName?.trim() ?? "";
@@ -88,7 +89,7 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
       </div>
 
       {/* Charts */}
-      {hasDepartments ? (
+      {hasDepartments && !isMonthly ? (
         <div className="px-5 md:px-6 pb-6">
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
             <div className="report-charts-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -110,7 +111,7 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
             </div>
           </div>
         </div>
-      ) : data.reportType === "monthly" && (data.monthly?.length ?? 0) > 0 ? (
+      ) : isMonthly ? (
         <div className="px-5 md:px-6 pb-6">
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
             <MonthlyTrendChart
@@ -131,6 +132,19 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
                 />
               </div>
             </div>
+            {/* DB-backed monthly reports also know which department each
+                dispense went to — Excel monthly reports never do. */}
+            {hasDepartments && (
+              <div className="report-charts-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="report-charts-main lg:col-span-2">
+                  <DepartmentBarChart data={data.departments} />
+                </div>
+                <div className="space-y-4">
+                  <Top5Card data={data.departments} />
+                  <DepartmentPieChart data={data.departments} total={data.summary.totalItems} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : data.items.length > 0 ? (

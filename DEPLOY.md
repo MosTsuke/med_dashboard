@@ -121,3 +121,16 @@ function openDashboardWithBlob(fileUrl, fileName) {
 ลำดับการทำงาน: เปิดแท็บใหม่ → แท็บ Dashboard ส่งสัญญาณ `dashboard-ready` กลับมาบอกว่าพร้อมรับไฟล์แล้ว → หน้า PHP ค่อยดึงไฟล์แล้วส่งไบต์เข้าไป — กันปัญหาส่งไฟล์ไปตอนแท็บใหม่ยังโหลดไม่เสร็จ
 
 อยากจำกัดว่าต้องเป็น origin ของหน้า PHP เท่านั้นถึงจะส่งไฟล์เข้ามาได้ (กันแท็บอื่นแอบส่งข้อมูลปลอม) ตั้ง env var `NEXT_PUBLIC_TRUSTED_OPENER_ORIGIN=http://<php-host>:8080` ตอน build/run Dashboard ได้ ถ้าไม่ตั้งไว้จะรับจาก opener origin ไหนก็ได้ (เหมาะกับใช้งานในวงแลนปิดของโรงพยาบาลอยู่แล้ว)
+
+## 7. ดึงข้อมูลจากฐานข้อมูล CSSD โดยตรง (ไม่ต้องใช้ไฟล์ Excel)
+
+Dashboard ต่อ SQL Server ของโปรแกรม CSSD ได้ตรง แล้วแสดงสถิติจ่ายตามปีงบประมาณ พร้อมแท็บ "รายการจ่าย"
+ถ้ายังไม่ได้ตั้งค่าส่วนนี้ ระบบใช้งานแบบนำเข้าไฟล์ Excel ได้ตามปกติ
+
+สิ่งที่ IT ต้องทำฝั่ง SQL Server (เปิด SQL Authentication, สร้าง login อ่านอย่างเดียว, เปิด TCP/IP) และค่าที่ต้องใส่ใน `.env.local` อยู่ใน [db/README.md](db/README.md)
+
+ลิงก์สำหรับปุ่มในหน้า PHP:
+
+```php
+<a href="http://<dashboard-host>:3001/?db=supply&fy=2568" target="_blank">สถิติจ่าย (ฐานข้อมูล)</a>
+```

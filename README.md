@@ -41,6 +41,11 @@ med_dashboard/
 └── package.json
 ```
 
+## ดึงข้อมูลจากฐานข้อมูล CSSD (SQL Server)
+
+นอกจากนำเข้าไฟล์ Excel แล้ว ยังดึงสถิติจ่ายจากฐานข้อมูลของโปรแกรม CSSD ได้โดยตรง
+วิธีตั้งค่าและวิธีรันฐานข้อมูลจำลองบนเครื่องอยู่ใน [db/README.md](db/README.md)
+
 ## รองรับ PDF 2 รูปแบบ
 
 1. **สรุปผล Resterile** — แสดง stat cards + bar chart + pie chart + top 5

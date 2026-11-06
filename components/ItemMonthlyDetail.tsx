@@ -26,6 +26,9 @@ interface Props {
   /** Relabels the price-shaped fields for non-monetary reports (e.g.
    * "สถิติล้าง" tracks pieces-per-set, not baht). */
   valueKind?: ValueKind;
+  /** Set when the numbers are scoped to one department (DB-backed reports),
+   * so the header says so instead of implying hospital-wide totals. */
+  department?: string;
 }
 
 const makeTooltip = (quantityUnit: string) =>
@@ -51,7 +54,7 @@ const makeTooltip = (quantityUnit: string) =>
     return null;
   };
 
-export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind }: Props) {
+export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind, department }: Props) {
   const isMonetary = valueKind?.isMonetary ?? true;
   const perUnitLabel = valueKind?.perUnitLabel ?? "ราคา/หน่วย";
   const totalLabel = valueKind?.totalLabel ?? "ราคารวม";
@@ -95,6 +98,9 @@ export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind 
           <h2 className="text-sm font-semibold text-gray-800 truncate">{item.name}</h2>
           <p className="text-xs text-gray-400">
             รายละเอียดรายเดือน ทั้งปีงบประมาณ ({monthOrder.length} เดือน)
+            {department && (
+              <span className="ml-1 font-medium text-blue-600">· เฉพาะหน่วยงาน {department}</span>
+            )}
           </p>
         </div>
       </div>
