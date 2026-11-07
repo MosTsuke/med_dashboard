@@ -1,4 +1,6 @@
 node_modules/
+# Node.js unpacked next to start-dashboard.bat on the hospital server
+/node/
 .next/
 test/
 _tmp_*

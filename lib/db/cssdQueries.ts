@@ -27,18 +27,28 @@
  *  Still unconfirmed with the hospital: whether SUM(SuplyCount) is the
  *  number they want for consumables, and what to call sets that no longer
  *  exist in SetTb (their names are gone; only the ids remain).
+ *
+ * ── Ground rule: the CSSD program must never notice the dashboard ──
+ *  Everything here is a SELECT. The login must be read-only (client.ts
+ *  refuses one that can write), and every table is read WITH (NOLOCK) so the
+ *  dashboard takes no shared locks: it can't hold up the CSSD program's own
+ *  inserts and updates, and never waits behind them either. The trade-off —
+ *  a row that is mid-insert can be counted a moment early — doesn't matter
+ *  for monthly statistics.
  */
 
 export const QUANTITY_EXPR = "SUM(COALESCE(s.SuplyCount, 1))";
 
+const NOLOCK = "WITH (NOLOCK)";
+
 /** Joins shared by every query. `s` = SupplyTb. PackTbNo 0 is the
  * consumables placeholder pack, so it's never joined. */
 const FROM_SUPPLY = `
-FROM dbo.SupplyTb s
-LEFT JOIN dbo.PackTb   p  ON p.PackTbNo    = s.PackTbNo AND s.PackTbNo <> 0
-LEFT JOIN dbo.SetTb    st ON st.SetTbId    = s.SetTbId
-LEFT JOIN dbo.DepartTb d  ON d.DepartTbId  = s.DepartTbId
-LEFT JOIN dbo.PersonTb pe ON pe.PersonTbId = s.PersonTbId`;
+FROM dbo.SupplyTb s ${NOLOCK}
+LEFT JOIN dbo.PackTb   p  ${NOLOCK} ON p.PackTbNo    = s.PackTbNo AND s.PackTbNo <> 0
+LEFT JOIN dbo.SetTb    st ${NOLOCK} ON st.SetTbId    = s.SetTbId
+LEFT JOIN dbo.DepartTb d  ${NOLOCK} ON d.DepartTbId  = s.DepartTbId
+LEFT JOIN dbo.PersonTb pe ${NOLOCK} ON pe.PersonTbId = s.PersonTbId`;
 
 const ITEM_NAME_EXPR = `COALESCE(NULLIF(LTRIM(RTRIM(st.SetTbName2)), ''), NULLIF(LTRIM(RTRIM(st.SetTbName1)), ''))`;
 
@@ -51,8 +61,23 @@ WHERE s.SupplyNo <> 0
 /** Earliest/latest dispense date — used to list the fiscal years on offer. */
 export const SUPPLY_DATE_RANGE_SQL = `
 SELECT MIN(SupplyDate) AS minDate, MAX(SupplyDate) AS maxDate
-FROM dbo.SupplyTb
+FROM dbo.SupplyTb ${NOLOCK}
 WHERE SupplyNo <> 0 AND SupplyDate IS NOT NULL`;
+
+/**
+ * Run once per connection pool: any 1 here means the login could change
+ * data, and client.ts refuses to use it. HAS_PERMS_BY_NAME covers grants
+ * made directly on the table; the role checks cover the usual shortcuts.
+ */
+export const WRITE_ACCESS_SQL = `
+SELECT
+  IS_SRVROLEMEMBER('sysadmin')                           AS sysadmin,
+  IS_ROLEMEMBER('db_owner')                              AS dbOwner,
+  IS_ROLEMEMBER('db_datawriter')                         AS dbDataWriter,
+  IS_ROLEMEMBER('db_ddladmin')                           AS dbDdlAdmin,
+  HAS_PERMS_BY_NAME('dbo.SupplyTb', 'OBJECT', 'INSERT')  AS canInsert,
+  HAS_PERMS_BY_NAME('dbo.SupplyTb', 'OBJECT', 'UPDATE')  AS canUpdate,
+  HAS_PERMS_BY_NAME('dbo.SupplyTb', 'OBJECT', 'DELETE')  AS canDelete`;
 
 /**
  * Quantity per set × department × calendar month. Month bucketing happens in

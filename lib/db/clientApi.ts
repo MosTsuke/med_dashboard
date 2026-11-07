@@ -1,3 +1,4 @@
+import type { SupplySource } from "@/lib/supply/source";
 import type { DashboardData, SupplyRowsPage } from "@/types";
 
 /** Browser-side helpers for the /api/db/* routes. */
@@ -7,6 +8,11 @@ async function getJson<T>(url: string): Promise<T> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || "ดึงข้อมูลจากฐานข้อมูลไม่สำเร็จ");
   return body as T;
+}
+
+/** Where สถิติจ่าย comes from on this server; instant, no database call. */
+export function fetchSupplySource() {
+  return getJson<{ source: SupplySource }>("/api/db/supply/status").then((r) => r.source);
 }
 
 export function fetchSupplyYears() {

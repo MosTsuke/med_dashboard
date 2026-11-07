@@ -106,21 +106,68 @@ SQL ทั้งหมดอยู่ใน [`lib/db/cssdQueries.ts`](../lib/db/
 
 ## ติดตั้งที่โรงพยาบาล (ให้ IT ทำ)
 
-SQL Server Express ค่าเริ่มต้นจะต่อจาก Node ไม่ได้ ต้องทำ 3 อย่างก่อน:
+Dashboard แค่ **อ่าน** ฐานข้อมูล CSSD ตัวเดียวกับที่โปรแกรม CSSD ใช้ และต้องไม่ทำให้โปรแกรม CSSD สะดุด
+ฝั่ง dashboard ป้องกันไว้แล้ว: อ่านอย่างเดียว อ่านแบบไม่ล็อกตาราง เชื่อมต่อพร้อมกันไม่เกิน 2 query ที่เกิน 30 วินาทีถูกยกเลิก
+และถ้าใส่ login ที่แก้ข้อมูลได้ (เช่น `sa` หรือ login ของโปรแกรม CSSD) จะไม่ยอมเชื่อมต่อ
+ใน Activity Monitor ของ SQL Server จะเห็นการเชื่อมต่อของ dashboard ในชื่อ `med-dashboard`
 
-1. **เปิด SQL Server Authentication** — SSMS → คลิกขวาที่ server → Properties → Security → "SQL Server and Windows Authentication mode" → restart service
-2. **สร้าง login แบบอ่านอย่างเดียว** (ใช้รหัสผ่านของโรงพยาบาลเอง ไม่ต้องส่งให้ผู้พัฒนา)
+### ขั้นที่ 1 — เช็คค่าปัจจุบัน (แค่อ่าน ไม่แก้อะไร)
 
-   ```sql
-   CREATE LOGIN dashboard_ro WITH PASSWORD = N'<รหัสผ่าน>';
-   USE CSSD;
-   CREATE USER dashboard_ro FOR LOGIN dashboard_ro;
-   ALTER ROLE db_datareader ADD MEMBER dashboard_ro;
-   ```
+รันใน SSMS ด้วย login ผู้ดูแลที่ IT ใช้อยู่:
 
-3. **เปิด TCP/IP** — SQL Server Configuration Manager → SQL Server Network Configuration → Protocols for SQLEXPRESS → TCP/IP = Enabled
-   แล้วเลือกอย่างใดอย่างหนึ่ง: ตั้ง port ตายตัว (แท็บ IP Addresses → IPAll → TCP Port = 1433, ลบค่า TCP Dynamic Ports) แล้วใส่ `CSSD_DB_PORT=1433`
-   **หรือ** เปิด service "SQL Server Browser" แล้วใส่ `CSSD_DB_INSTANCE=SQLEXPRESS`
+```sql
+-- 0 = เปิด SQL Server Authentication อยู่แล้ว / 1 = ยังใช้ได้แค่ Windows login
+SELECT SERVERPROPERTY('IsIntegratedSecurityOnly') AS windows_auth_only;
 
-จากนั้นสร้างไฟล์ `.env.local` ในโฟลเดอร์โปรเจกต์บน server (ดูตัวอย่างใน `.env.example`) แล้ว build/start ใหม่
-ถ้า dashboard รันคนละเครื่องกับ SQL Server ต้องเปิด firewall port 1433 จากเครื่อง dashboard ด้วย
+-- ดูบรรทัดแบบ  Server is listening on [ 'any' <ipv4> 1433].
+-- ถ้ามี แปลว่าเปิด TCP/IP อยู่แล้ว และเลขท้ายคือ port ที่ใช้
+EXEC xp_readerrorlog 0, 1, N'Server is listening on';
+```
+
+บรรทัดที่เป็น `127.0.0.1` หรือ `::1` ไม่นับ เพราะเป็นช่องเชื่อมต่อสำหรับผู้ดูแลจากในเครื่องเท่านั้น
+
+ถ้าคำสั่งที่สองไม่มีผลลัพธ์ ให้เปิดดูใน SQL Server Configuration Manager → SQL Server Network Configuration → Protocols for SQLEXPRESS ว่า TCP/IP เป็น Enabled ไหม (ดูอย่างเดียว ไม่ต้องแก้)
+แล้วเปิด `services.msc` ดูว่า service "SQL Server Browser" สถานะ Running หรือไม่
+
+**ถ้าเปิด SQL Server Authentication และ TCP/IP อยู่แล้ว ไม่ต้องเปลี่ยนค่าใดของ SQL Server และไม่ต้อง restart เลย** ไปขั้นที่ 2 ได้ทันที
+
+### ขั้นที่ 2 — สร้าง login แบบอ่านอย่างเดียว (ไม่ต้อง restart)
+
+ใช้รหัสผ่านของโรงพยาบาลเอง ไม่ต้องส่งให้ผู้พัฒนา:
+
+```sql
+CREATE LOGIN dashboard_ro WITH PASSWORD = N'<รหัสผ่าน>';
+USE CSSD;
+CREATE USER dashboard_ro FOR LOGIN dashboard_ro;
+ALTER ROLE db_datareader ADD MEMBER dashboard_ro;
+```
+
+การสร้าง login ใหม่ไม่กระทบผู้ใช้หรือโปรแกรมเดิม ถ้าเลิกใช้ dashboard ลบออกได้ด้วย `DROP USER dashboard_ro;` (ใน CSSD) และ `DROP LOGIN dashboard_ro;`
+อย่าให้ dashboard ใช้ `sa` หรือ login เดียวกับโปรแกรม CSSD
+
+### ขั้นที่ 3 — ใส่ค่าใน `.env.local` บนเครื่องที่รัน dashboard
+
+```
+CSSD_DB_SERVER=localhost
+CSSD_DB_NAME=CSSD
+CSSD_DB_USER=dashboard_ro
+CSSD_DB_PASSWORD="<รหัสผ่าน>"
+```
+
+แล้วเพิ่มอีกบรรทัดตามผลขั้นที่ 1 — **ไม่ต้องไปเปลี่ยน port ของ SQL Server**:
+- ถ้า "SQL Server Browser" Running อยู่: `CSSD_DB_INSTANCE=SQLEXPRESS` (ชื่อ instance ตามที่เห็นใน Configuration Manager)
+- ถ้าไม่ได้เปิด: `CSSD_DB_PORT=<เลข port จากขั้นที่ 1>`
+  ถ้า port นั้นเป็นแบบ dynamic อาจเปลี่ยนเลขได้หลัง SQL Server restart (นาน ๆ ครั้ง) ถ้า dashboard ต่อไม่ได้หลังจากนั้น ให้เช็คเลขใหม่ด้วยคำสั่งในขั้นที่ 1 แล้วแก้ใน `.env.local`
+
+ถ้า dashboard รันคนละเครื่องกับ SQL Server ให้ใส่ชื่อหรือ IP ของเครื่อง SQL Server แทน `localhost` และต้องเปิด firewall ฝั่ง SQL Server ให้เครื่อง dashboard เข้าถึง port นั้นได้ (และ UDP 1434 ถ้าใช้ `CSSD_DB_INSTANCE`) — รันไว้เครื่องเดียวกันง่ายกว่า
+
+### ถ้าขั้นที่ 1 พบว่ายังไม่ได้เปิด SQL Server Authentication หรือ TCP/IP
+
+Dashboard ต่อฐานข้อมูลได้ทาง TCP/IP ด้วย SQL login เท่านั้น ถ้ายังไม่ได้เปิด ต้องแก้ค่าที่ SQL Server แล้ว **restart service ของ SQL Server ซึ่งทำให้โปรแกรม CSSD ใช้งานไม่ได้ชั่วครู่**
+ให้ตกลงกับผู้ดูแลโปรแกรม CSSD ก่อน และทำนอกเวลางานเท่านั้น:
+
+1. **เปิด SQL Server Authentication** — SSMS → คลิกขวาที่ server → Properties → Security → "SQL Server and Windows Authentication mode"
+   (Windows login เดิมยังใช้ได้ตามปกติ แค่เพิ่มให้ใช้ SQL login ได้ด้วย)
+2. **เปิด TCP/IP** — SQL Server Configuration Manager → SQL Server Network Configuration → Protocols for SQLEXPRESS → TCP/IP = Enabled
+   **ไม่ต้องตั้งหรือเปลี่ยน port** ปล่อยค่าเดิมไว้ แล้วใช้ SQL Server Browser หรือเลข port จากขั้นที่ 1 ตามขั้นที่ 3
+3. restart service "SQL Server (SQLEXPRESS)" ครั้งเดียว แล้วเช็คว่าโปรแกรม CSSD ใช้งานได้ปกติ

@@ -46,6 +46,9 @@ med_dashboard/
 นอกจากนำเข้าไฟล์ Excel แล้ว ยังดึงสถิติจ่ายจากฐานข้อมูลของโปรแกรม CSSD ได้โดยตรง
 วิธีตั้งค่าและวิธีรันฐานข้อมูลจำลองบนเครื่องอยู่ใน [db/README.md](db/README.md)
 
+ตอนนี้ **ปิดการนำเข้าไฟล์ Excel ไว้** ตามที่หน้างานขอ ให้ดึงจากฐานข้อมูลได้อย่างเดียว
+โค้ดยังอยู่ครบ จะเปิดกลับให้แก้ `EXCEL_IMPORT_ENABLED` ใน [lib/features.ts](lib/features.ts) เป็น `true` แล้ว build ใหม่
+
 ## รองรับ PDF 2 รูปแบบ
 
 1. **สรุปผล Resterile** — แสดง stat cards + bar chart + pie chart + top 5

@@ -156,6 +156,14 @@ export function buildSupplyReport(
 
   const monthly: MonthlyPoint[] = months.map((month) => ({ month, quantity: monthTotals[month] ?? 0 }));
 
+  // The period shown is first to last month that actually has dispenses, so
+  // a fiscal year still in progress reads "10/2569 – 11/2569", not as if the
+  // whole year were in. (The charts still lay out all 12 fiscal months.)
+  const monthsWithData = months.filter((m) => monthTotals[m] > 0);
+  const period = monthsWithData.length
+    ? { from: monthsWithData[0], to: monthsWithData[monthsWithData.length - 1] }
+    : undefined;
+
   const valueKind: ValueKind = {
     isMonetary: true,
     perUnitLabel: "ราคา(ต่อหน่วย)",
@@ -166,7 +174,7 @@ export function buildSupplyReport(
   };
 
   return {
-    period: { from: months[0], to: months[months.length - 1] },
+    period,
     reportName: `สถิติจ่ายปีงบประมาณ ${fy}${opts.demo ? " (ข้อมูลจำลอง)" : ""}`,
     fiscalYear: String(fy),
     summary: {

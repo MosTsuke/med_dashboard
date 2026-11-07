@@ -1,0 +1,4 @@
+# Windows cmd misreads batch files with Unix (LF) line endings, so check
+# them out — and put them in GitHub's "Download ZIP" — with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

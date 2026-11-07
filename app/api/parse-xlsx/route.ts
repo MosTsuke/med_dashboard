@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EXCEL_IMPORT_ENABLED } from "@/lib/features";
 import { resolveLogoUrl } from "@/lib/logoFromXlsx";
 import { parseXLSXBuffer } from "@/lib/parseXLSX";
+
+/** Excel import is switched off (lib/features.ts): answer as if the route
+ * weren't there, and never fetch a `?src=` URL. */
+function importDisabled() {
+  return NextResponse.json(
+    { error: "ตอนนี้ปิดการนำเข้าไฟล์ Excel ไว้ ใช้การดึงข้อมูลจากฐานข้อมูลแทน" },
+    { status: 404 }
+  );
+}
 
 const ACCEPTED = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
@@ -39,6 +49,7 @@ async function parseAndRespond(buffer: Buffer) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!EXCEL_IMPORT_ENABLED) return importDisabled();
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -75,6 +86,7 @@ export async function POST(req: NextRequest) {
  * and parses it exactly like a manual upload.
  */
 export async function GET(req: NextRequest) {
+  if (!EXCEL_IMPORT_ENABLED) return importDisabled();
   try {
     const src = req.nextUrl.searchParams.get("src");
     if (!src) {

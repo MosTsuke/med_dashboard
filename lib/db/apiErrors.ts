@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DbNotConfiguredError } from "@/lib/db/client";
+import { DbNotConfiguredError, DbWriteAccessError } from "@/lib/db/client";
 
 /**
  * Turns a DB failure into a Thai message for the UI. Details (server names,
@@ -11,6 +11,10 @@ export function dbErrorResponse(err: unknown, context: string) {
   }
   if (err instanceof RangeError) {
     return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+  if (err instanceof DbWriteAccessError) {
+    console.error(`[db] ${context}: refused a login with write access`);
+    return NextResponse.json({ error: err.message }, { status: 503 });
   }
   console.error(`[db] ${context}:`, err);
   const code = (err as { code?: string })?.code;

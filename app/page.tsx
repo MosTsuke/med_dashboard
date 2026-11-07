@@ -15,6 +15,7 @@ import {
   Building2,
   ClipboardList,
   FlaskConical,
+  Database,
 } from "lucide-react";
 
 import PDFUploader, { type FileUploaderHandle } from "@/components/PDFUploader";
@@ -27,6 +28,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import DbReportLoader from "@/components/DbReportLoader";
 import SupplyRowsTable from "@/components/SupplyRowsTable";
 import { fetchSupplyReport } from "@/lib/db/clientApi";
+import { EXCEL_IMPORT_ENABLED } from "@/lib/features";
 import { exportReportPdf } from "@/lib/exportReportPdf";
 import {
   sliceByMonth,
@@ -39,6 +41,7 @@ import {
   type DepartmentFilter,
 } from "@/lib/monthlyView";
 
+import type { SupplySource } from "@/lib/supply/source";
 import type { DashboardData, ItemData } from "@/types";
 
 type Tab = "dashboard" | "detail" | "subdetail" | "records";
@@ -56,6 +59,11 @@ export default function DashboardPage() {
   const [selectedItem, setSelectedItem] = useState<ItemData | null>(null);
   const [autoLoadState, setAutoLoadState] = useState<"idle" | "loading" | "error">("idle");
   const [autoLoadError, setAutoLoadError] = useState<string | null>(null);
+  /** Where สถิติจ่าย comes from on this server ("checking" until it says).
+   * With a database (or demo data) the database is the main way in and
+   * Excel import is the secondary option; otherwise Excel is all there is.
+   * (While EXCEL_IMPORT_ENABLED is off, the database is the only way in.) */
+  const [dbSource, setDbSource] = useState<SupplySource | "checking">("checking");
   const reportRef = useRef<HTMLDivElement>(null);
   const uploaderRef = useRef<FileUploaderHandle>(null);
 
@@ -105,6 +113,16 @@ export default function DashboardPage() {
     }
 
     const src = params.get("src");
+
+    // Excel import is switched off (lib/features.ts): an old `?src=` link
+    // says so instead of loading, and an opener's file is never asked for.
+    if (!EXCEL_IMPORT_ENABLED) {
+      if (src) {
+        setAutoLoadError("ตอนนี้ปิดการนำเข้าไฟล์ Excel ไว้ ใช้การดึงข้อมูลจากฐานข้อมูลด้านล่างแทน");
+        setAutoLoadState("error");
+      }
+      return;
+    }
 
     if (src) {
       let cancelled = false;
@@ -234,6 +252,7 @@ export default function DashboardPage() {
     [departmentView, selectedMonth]
   );
   const dbFiscalYear = data?.source?.kind === "db" ? data.source.fiscalYear : null;
+  const dbIsMain = dbSource === "db" || dbSource === "demo" || dbFiscalYear != null;
 
   const hasItems = (viewData?.items?.length ?? 0) > 0;
   const hasDepartments = (viewData?.departments?.length ?? 0) > 0;
@@ -333,6 +352,7 @@ export default function DashboardPage() {
                 currentFiscalYear={dbFiscalYear}
                 onDataLoaded={handleDataLoaded}
                 onLoadingChange={setImporting}
+                onSourceChange={setDbSource}
               />
             )}
             {data && (
@@ -345,18 +365,22 @@ export default function DashboardPage() {
                 ล้างข้อมูล
               </button>
             )}
-            {data && (
+            {data && EXCEL_IMPORT_ENABLED && (
               <button
                 onClick={handleImportClick}
                 disabled={importing}
-                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                className={
+                  dbIsMain
+                    ? "flex items-center gap-1.5 text-xs text-gray-500 px-2.5 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors disabled:opacity-50"
+                    : "flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                }
               >
                 {importing ? (
                   <Loader2 size={13} className="animate-spin" />
                 ) : (
                   <UploadCloud size={13} />
                 )}
-                นำเข้าไฟล์ใหม่
+                {dbIsMain ? "นำเข้าไฟล์ Excel" : "นำเข้าไฟล์ใหม่"}
               </button>
             )}
           </div>
@@ -366,7 +390,7 @@ export default function DashboardPage() {
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-5">
 
         {/* ตัวเลือกไฟล์ซ่อน — ใช้เมื่อมีข้อมูลแล้ว (กดปุ่ม header) */}
-        {data && (
+        {data && EXCEL_IMPORT_ENABLED && (
           <div className="sr-only" aria-hidden>
             <PDFUploader
               ref={uploaderRef}
@@ -384,31 +408,70 @@ export default function DashboardPage() {
           </div>
         )}
         {!data && autoLoadState !== "loading" && (
-          <div className="space-y-2 max-w-xl mx-auto py-16">
-            <div className="text-center mb-5">
-              <div className="w-16 h-16 bg-white/70 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-white">
-                <UploadCloud size={28} className="text-blue-400" />
-              </div>
-              <p className="text-gray-600 font-medium mb-1">ยังไม่มีข้อมูล</p>
-              <p className="text-sm text-gray-400">กรุณานำเข้าไฟล์ Excel (.xlsx / .xls)</p>
-            </div>
+          <div className="space-y-4 max-w-xl mx-auto py-16">
             {autoLoadState === "error" && autoLoadError && (
               <p className="text-xs text-red-500 text-center bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                 {autoLoadError}
               </p>
             )}
-            <PDFUploader
-              ref={uploaderRef}
+
+            {/* ทางหลัก: ดึงจากฐานข้อมูล — ไม่แสดงเลยถ้า server ไม่ได้ตั้งค่าฐานข้อมูล */}
+            <DbReportLoader
               onDataLoaded={handleDataLoaded}
               onLoadingChange={setImporting}
+              onSourceChange={setDbSource}
             />
-            <p className="text-xs text-gray-400 text-center">
-              รองรับเฉพาะไฟล์ <span className="font-medium">.xlsx</span> และ{" "}
-              <span className="font-medium">.xls</span>
-            </p>
-            <div className="pt-4">
-              <DbReportLoader onDataLoaded={handleDataLoaded} onLoadingChange={setImporting} />
-            </div>
+
+            {!EXCEL_IMPORT_ENABLED ? (
+              dbSource === "none" && (
+                // ปิดการนำเข้าไฟล์ไว้ และ server ยังไม่ได้ตั้งค่าฐานข้อมูล
+                <div className="bg-white border border-gray-100 rounded-2xl p-6 sm:p-8 shadow-sm text-center">
+                  <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Database size={26} className="text-gray-400" />
+                  </div>
+                  <p className="text-gray-700 font-medium mb-1">ยังไม่ได้ตั้งค่าการเชื่อมต่อฐานข้อมูล</p>
+                  <p className="text-sm text-gray-500">
+                    ให้ผู้ดูแลระบบตั้งค่าในไฟล์ <span className="font-mono">.env.local</span> ตามคู่มือ{" "}
+                    <span className="font-mono">db/README.md</span> แล้วเปิดโปรแกรมใหม่
+                  </p>
+                </div>
+              )
+            ) : dbIsMain ? (
+              <>
+                {/* ทางรอง: นำเข้าไฟล์ Excel */}
+                <div className="flex items-center gap-3 text-xs text-gray-400 pt-2">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  หรือ
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+                <PDFUploader
+                  ref={uploaderRef}
+                  variant="compact"
+                  onDataLoaded={handleDataLoaded}
+                  onLoadingChange={setImporting}
+                />
+              </>
+            ) : dbSource === "none" ? (
+              <>
+                {/* ไม่มีฐานข้อมูล — นำเข้าไฟล์ Excel เป็นทางเดียว */}
+                <div className="text-center mb-1">
+                  <div className="w-16 h-16 bg-white/70 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm border border-white">
+                    <UploadCloud size={28} className="text-blue-400" />
+                  </div>
+                  <p className="text-gray-600 font-medium mb-1">ยังไม่มีข้อมูล</p>
+                  <p className="text-sm text-gray-400">กรุณานำเข้าไฟล์ Excel (.xlsx / .xls)</p>
+                </div>
+                <PDFUploader
+                  ref={uploaderRef}
+                  onDataLoaded={handleDataLoaded}
+                  onLoadingChange={setImporting}
+                />
+                <p className="text-xs text-gray-400 text-center">
+                  รองรับเฉพาะไฟล์ <span className="font-medium">.xlsx</span> และ{" "}
+                  <span className="font-medium">.xls</span>
+                </p>
+              </>
+            ) : null}
           </div>
         )}
 
