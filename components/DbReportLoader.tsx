@@ -304,7 +304,7 @@ function CompactControls({
       )}
 
       {open && draft && bounds && (
-        <div className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))] bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-30 space-y-3">
+        <div className="absolute right-0 top-full mt-2 w-[min(34rem,calc(100vw-2rem))] bg-white border border-gray-200 rounded-xl shadow-lg p-4 z-30 space-y-3">
           <PeriodPicker bounds={bounds} value={draft} onChange={setDraft} disabled={loading} />
           {error && <p className="text-xs text-red-500">{error}</p>}
           <button
