@@ -13,8 +13,8 @@ import { ArrowLeft, Package, DollarSign, Layers, CalendarCheck } from "lucide-re
 import ReportSectionHeader from "@/components/ReportSectionHeader";
 import StatCard from "@/components/StatCard";
 import { formatNumber } from "@/lib/formatNumber";
-import { formatMonthLabel } from "@/lib/monthlyView";
-import type { ItemData, ValueKind } from "@/types";
+import { formatMonthLabel, GRAIN_LABEL, GRAIN_UNIT } from "@/lib/monthlyView";
+import type { DbGrain, ItemData, ValueKind } from "@/types";
 
 interface Props {
   item: ItemData;
@@ -22,6 +22,10 @@ interface Props {
    * chart/table always shows all 12 months in the right order, regardless
    * of which single month happens to be selected elsewhere in the app. */
   monthOrder: string[];
+  /** DB reports: how `monthOrder` is bucketed (days, months or fiscal
+   * years) over the chosen period. Absent = an Excel report, one fiscal
+   * year month by month. */
+  grain?: DbGrain;
   onBack: () => void;
   /** Relabels the price-shaped fields for non-monetary reports (e.g.
    * "สถิติล้าง" tracks pieces-per-set, not baht). */
@@ -54,7 +58,12 @@ const makeTooltip = (quantityUnit: string) =>
     return null;
   };
 
-export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind, department }: Props) {
+export default function ItemMonthlyDetail({ item, monthOrder, grain, onBack, valueKind, department }: Props) {
+  // Excel reports are one fiscal year month by month; DB reports cover the
+  // chosen period in days, months or fiscal years.
+  const bucketUnit = GRAIN_UNIT[grain ?? "month"];
+  const whole = grain ? "ทั้งช่วง" : "ทั้งปี";
+  const trendLabel = `แนวโน้ม${GRAIN_LABEL[grain ?? "month"]}`;
   const isMonetary = valueKind?.isMonetary ?? true;
   const perUnitLabel = valueKind?.perUnitLabel ?? "ราคา/หน่วย";
   const totalLabel = valueKind?.totalLabel ?? "ราคารวม";
@@ -97,7 +106,9 @@ export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind,
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-gray-800 truncate">{item.name}</h2>
           <p className="text-xs text-gray-400">
-            รายละเอียดรายเดือน ทั้งปีงบประมาณ ({monthOrder.length} เดือน)
+            {grain
+              ? `รายละเอียด${GRAIN_LABEL[grain]} ทั้งช่วงที่เลือก (${monthOrder.length} ${bucketUnit})`
+              : `รายละเอียดรายเดือน ทั้งปีงบประมาณ (${monthOrder.length} เดือน)`}
             {department && (
               <span className="ml-1 font-medium text-blue-600">· เฉพาะหน่วยงาน {department}</span>
             )}
@@ -110,7 +121,7 @@ export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind,
           <StatCard
             variant="report"
             icon={Package}
-            label="จำนวนรวมทั้งปี"
+            label={`จำนวนรวม${whole}`}
             value={totalQuantity}
             unit={quantityUnit}
             color="blue"
@@ -118,7 +129,7 @@ export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind,
           <StatCard
             variant="report"
             icon={isMonetary ? DollarSign : Layers}
-            label={valueKind ? `${totalLabel}ทั้งปี` : "ราคารวมทั้งปี"}
+            label={valueKind ? `${totalLabel}${whole}` : `ราคารวม${whole}`}
             value={item.totalPrice}
             decimals={decimals}
             unit={unit}
@@ -127,15 +138,15 @@ export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind,
           <StatCard
             variant="report"
             icon={CalendarCheck}
-            label="เดือนที่มีการใช้งาน"
+            label={`${bucketUnit}ที่มีการใช้งาน`}
             value={activeMonths}
-            unit={`จาก ${monthOrder.length} เดือน`}
+            unit={`จาก ${monthOrder.length} ${bucketUnit}`}
             color="purple"
           />
         </div>
 
         <div className="rounded-xl border border-gray-200 overflow-hidden">
-          <ReportSectionHeader title={`แนวโน้มรายเดือน — ${item.name}`} />
+          <ReportSectionHeader title={`${trendLabel} — ${item.name}`} />
           <div className="p-5">
             <ResponsiveContainer width="100%" height={280}>
               <LineChart
@@ -167,7 +178,7 @@ export default function ItemMonthlyDetail({ item, monthOrder, onBack, valueKind,
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  เดือน
+                  {bucketUnit}
                 </th>
                 <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   จำนวน

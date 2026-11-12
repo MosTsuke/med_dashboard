@@ -216,3 +216,6 @@ Dashboard ต่อ SQL Server ของโปรแกรม CSSD ได้ต�
 <a href="http://<dashboard-host>:3001/?db=pack&fy=2568" target="_blank">สถิติแพ็ค</a>
 <a href="http://<dashboard-host>:3001/?db=resterile&fy=2568" target="_blank">Resterile</a>
 ```
+
+`fy=2568` คือทั้งปีงบประมาณ แสดงรายเดือน ถ้าต้องการช่วงอื่นหรือแสดงรายวัน/รายปี ใช้ `from` / `to` (วันที่แบบ ค.ศ. รวมวันสุดท้าย) กับ `grain` (`day`, `month`, `year`) เช่น
+`?db=supply&from=2025-11-01&to=2025-11-30&grain=day` (รายวันได้ไม่เกิน 366 วัน)

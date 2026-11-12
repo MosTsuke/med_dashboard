@@ -34,12 +34,10 @@ run -Q "IF DB_ID(N'CSSD') IS NOT NULL ALTER DATABASE CSSD SET SINGLE_USER WITH R
         ALTER DATABASE CSSD SET MULTI_USER;"
 
 # A full hospital backup carries secrets/personal data the dashboard never
-# needs — blank them in this local copy (no-op for columns that don't exist).
-run -d CSSD -Q "SET NOCOUNT ON;
-  IF COL_LENGTH('dbo.DepartTb', 'DepartTbPassword') IS NOT NULL EXEC('UPDATE dbo.DepartTb SET DepartTbPassword = NULL');
-  IF COL_LENGTH('dbo.PersonTb', 'PersonName')       IS NOT NULL EXEC('UPDATE dbo.PersonTb SET PersonName = NULL');
-  IF COL_LENGTH('dbo.PersonTb', 'PersonSurName')    IS NOT NULL EXEC('UPDATE dbo.PersonTb SET PersonSurName = NULL');
-  IF COL_LENGTH('dbo.PersonTb', 'PersonBarcode')    IS NOT NULL EXEC('UPDATE dbo.PersonTb SET PersonBarcode = NULL');"
+# needs (passwords, staff names, patient HN, free-text notes) — blank them
+# in this local copy. Columns that don't exist are skipped.
+docker cp "$HERE/04-scrub-personal-data.sql" "$CONTAINER:/tmp/04-scrub-personal-data.sql"
+run -d CSSD -i /tmp/04-scrub-personal-data.sql
 
 docker cp "$HERE/03-readonly-login.sql" "$CONTAINER:/tmp/03-readonly-login.sql"
 run -i /tmp/03-readonly-login.sql >/dev/null

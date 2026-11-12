@@ -67,11 +67,23 @@ export interface DashboardData {
   reportType: "summary" | "items" | "monthly" | "unknown";
   /** Where the data came from. Absent = an imported file. */
   /** `demo: true` = built-in made-up data (see lib/supply/demo.ts), not the hospital's. */
-  source?: { kind: "db"; report: DbReportKind; fiscalYear: number; demo?: boolean };
+  source?: { kind: "db"; report: DbReportKind; period: DbPeriod; demo?: boolean };
 }
 
 /** The reports read from the CSSD database: สถิติจ่าย, สถิติแพ็ค, Resterile. */
 export type DbReportKind = "supply" | "pack" | "resterile";
+
+/** How a DB report is bucketed over time: per day, per month or per
+ * fiscal year (ปีงบประมาณ). For DB reports `monthly` / `monthlyQuantity`
+ * hold these buckets — keys "2569-11-07", "2569-11" or "FY2569". */
+export type DbGrain = "day" | "month" | "year";
+
+/** The time range of a DB report: CE "YYYY-MM-DD" dates, both inclusive. */
+export interface DbPeriod {
+  from: string;
+  to: string;
+  grain: DbGrain;
+}
 
 /** One record for a DB report's record list (รายการจ่าย / รายการแพ็ค / …). */
 export interface ReportRecord {

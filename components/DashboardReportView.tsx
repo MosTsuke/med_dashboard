@@ -14,7 +14,7 @@ import TopItemsCard from "@/components/TopItemsCard";
 import ItemBarChart from "@/components/ItemBarChart";
 import ItemPieChart from "@/components/ItemPieChart";
 import MonthlyTrendChart from "@/components/MonthlyTrendChart";
-import { formatPeriodValue } from "@/lib/monthlyView";
+import { formatPeriodValue, GRAIN_LABEL, grainOf } from "@/lib/monthlyView";
 import type { DashboardData } from "@/types";
 
 interface Props {
@@ -68,7 +68,9 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
                 <ReportNote className="text-xs md:text-sm">
                   <CalendarDays size={13} className="shrink-0" />
                   <span className="font-semibold">
-                    {data.reportType === "monthly" ? "เดือน" : "วันที่"}{" "}
+                    {data.reportType !== "monthly"
+                      ? "วันที่"
+                      : { day: "วันที่", month: "เดือน", year: "" }[grainOf(data)]}{" "}
                     {formatPeriodValue(data.period.from)} ถึง {formatPeriodValue(data.period.to)}
                     {data.fiscalYear && ` (ปีงบประมาณ ${data.fiscalYear})`}
                   </span>
@@ -118,6 +120,7 @@ const DashboardReportView = forwardRef<HTMLDivElement, Props>(
               data={data.monthly!}
               onMonthClick={onMonthClick}
               unit={data.valueKind?.quantityUnit}
+              title={`แนวโน้มจำนวน${GRAIN_LABEL[grainOf(data)]}`}
             />
             <div className="report-charts-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="report-charts-main lg:col-span-2">

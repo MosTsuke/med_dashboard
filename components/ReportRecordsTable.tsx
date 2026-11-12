@@ -5,15 +5,16 @@ import { Search, Loader2, AlertCircle, Info } from "lucide-react";
 import { REPORT_BANNER_BG } from "@/components/ReportNote";
 import TablePagination, { type PageSize } from "@/components/TablePagination";
 import { fetchReportRecords } from "@/lib/db/clientApi";
-import { formatMonthLabel } from "@/lib/monthlyView";
 import { DB_REPORTS } from "@/lib/supply/reports";
 import type { DbReportKind, ReportRecordsPage } from "@/types";
 
 interface Props {
   report: DbReportKind;
-  fiscalYear: number;
-  /** "2567-10"-style key, or undefined for the whole fiscal year. */
-  month?: string;
+  /** Date range shown, CE "YYYY-MM-DD", both inclusive. */
+  from: string;
+  to: string;
+  /** What the range is, in words ("ปีงบประมาณ 2568", "พ.ย. 2568", …). */
+  scope: string;
   /** Department name, or undefined for all departments. */
   department?: string;
 }
@@ -37,7 +38,7 @@ const th = "text-left px-4 py-3 text-xs font-semibold text-white uppercase track
  * Paginated server-side (a fiscal year is >100k rows), following the
  * dashboard's month/department filters.
  */
-export default function ReportRecordsTable({ report, fiscalYear, month, department }: Props) {
+export default function ReportRecordsTable({ report, from, to, scope: scopeLabel, department }: Props) {
   const info = DB_REPORTS[report];
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -53,7 +54,7 @@ export default function ReportRecordsTable({ report, fiscalYear, month, departme
 
   // Any filter change goes back to page 1 — derived in the same render, so
   // a filter change never fires a request for the old page number first.
-  const filterKey = JSON.stringify([report, fiscalYear, month, department, debouncedQuery, perPage]);
+  const filterKey = JSON.stringify([report, from, to, department, debouncedQuery, perPage]);
   const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
   const page = pageState.key === filterKey ? pageState.page : 1;
   const setPage = (p: number) => setPageState({ key: filterKey, page: p });
@@ -63,8 +64,8 @@ export default function ReportRecordsTable({ report, fiscalYear, month, departme
     setLoading(true);
     setError(null);
     fetchReportRecords(report, {
-      fy: fiscalYear,
-      month,
+      from,
+      to,
       department,
       q: debouncedQuery || undefined,
       page,
@@ -76,14 +77,9 @@ export default function ReportRecordsTable({ report, fiscalYear, month, departme
     return () => {
       cancelled = true;
     };
-  }, [report, fiscalYear, month, department, debouncedQuery, page, perPage]);
+  }, [report, from, to, department, debouncedQuery, page, perPage]);
 
-  const scope = [
-    month ? formatMonthLabel(month) : `ปีงบประมาณ ${fiscalYear}`,
-    department,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const scope = [scopeLabel, department].filter(Boolean).join(" · ");
   const columns = info.noteLabel ? 7 : 6;
 
   return (

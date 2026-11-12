@@ -1,4 +1,4 @@
-import type { DbReportKind } from "@/types";
+import type { DbGrain, DbReportKind } from "@/types";
 
 /**
  * Every SQL statement the dashboard runs against the CSSD database.
@@ -53,15 +53,24 @@ const NOLOCK = "WITH (NOLOCK)";
 export interface ReportSql {
   /** → minDate, maxDate: lists the fiscal years on offer. */
   dateRange: string;
-  /** @from, @to → setId, setName, setPrice, packPrice, department, y, m, qty
-   * per set × department × calendar month (bucketed in SQL so DATETIME
-   * values never pass through a JS time zone). */
-  aggregate: string;
+  /** Per grain: @from, @to → setId, setName, setPrice, packPrice,
+   * department, bucket, qty per set × department × time bucket. `bucket` is
+   * the bucket's first day (a DATE), worked out in SQL so DATETIME values
+   * never pass through a JS time zone. */
+  aggregate: Record<DbGrain, string>;
   /** @from, @to + row filters → total. */
   rowsCount: string;
   /** … + @offset, @pageSize → id, at, setId, setName, barcode, quantity,
    * expiryDate, department, person, note; newest first. */
   rows: string;
+}
+
+/** First day of the bucket `date` falls in: the day itself, the 1st of its
+ * month, or 1 Oct starting its fiscal year (ปีงบ N = 1 Oct N-1 … 30 Sep N). */
+function bucketExpr(grain: DbGrain, date: string): string {
+  if (grain === "day") return `CAST(${date} AS date)`;
+  if (grain === "month") return `DATEFROMPARTS(YEAR(${date}), MONTH(${date}), 1)`;
+  return `DATEFROMPARTS(YEAR(DATEADD(month, 3, ${date})) - 1, 10, 1)`;
 }
 
 const ITEM_NAME_EXPR = `COALESCE(NULLIF(LTRIM(RTRIM(st.SetTbName2)), ''), NULLIF(LTRIM(RTRIM(st.SetTbName1)), ''))`;
@@ -99,25 +108,27 @@ function reportSql(spec: {
   const range = `${spec.where}
   AND ${spec.date} >= @from
   AND ${spec.date} <  @to`;
-  return {
-    dateRange: `
-SELECT MIN(${spec.dateRangeDate}) AS minDate, MAX(${spec.dateRangeDate}) AS maxDate
-${spec.dateRangeFrom}
-WHERE ${spec.dateRangeWhere} AND ${spec.dateRangeDate} IS NOT NULL`,
-    aggregate: `
+  const aggregate = (grain: DbGrain) => {
+    const bucket = bucketExpr(grain, spec.date);
+    return `
 SELECT
   ${spec.setId}           AS setId,
   ${ITEM_NAME_EXPR}       AS setName,
   MAX(st.SetTbPrice)      AS setPrice,
   MAX(p.SetTbPrice)       AS packPrice,
   d.DepartTbName          AS department,
-  YEAR(${spec.date})      AS y,
-  MONTH(${spec.date})     AS m,
+  ${bucket}               AS bucket,
   SUM(${spec.qty})        AS qty
 ${spec.from}
 WHERE ${range}
-GROUP BY ${spec.setId}, ${ITEM_NAME_EXPR}, d.DepartTbName,
-         YEAR(${spec.date}), MONTH(${spec.date})`,
+GROUP BY ${spec.setId}, ${ITEM_NAME_EXPR}, d.DepartTbName, ${bucket}`;
+  };
+  return {
+    dateRange: `
+SELECT MIN(${spec.dateRangeDate}) AS minDate, MAX(${spec.dateRangeDate}) AS maxDate
+${spec.dateRangeFrom}
+WHERE ${spec.dateRangeWhere} AND ${spec.dateRangeDate} IS NOT NULL`,
+    aggregate: { day: aggregate("day"), month: aggregate("month"), year: aggregate("year") },
     rowsCount: `
 SELECT COUNT(*) AS total
 ${spec.from}

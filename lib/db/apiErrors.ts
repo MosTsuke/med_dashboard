@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { DbNotConfiguredError, DbWriteAccessError } from "@/lib/db/client";
+import { fiscalYearPeriod } from "@/lib/supply/shape";
+import type { DbGrain, DbPeriod } from "@/types";
 
 /**
  * Turns a DB failure into a Thai message for the UI. Details (server names,
@@ -34,6 +36,27 @@ export function unknownReportResponse() {
     { status: 404 }
   );
 }
+
+/**
+ * The period a report request asks for: `?from=2025-10-01&to=2025-10-31
+ * [&grain=day|month|year]` (CE dates, both inclusive; grain defaults to
+ * month), or the older `?fy=2568` = that whole fiscal year, month by month.
+ * Null when neither is given properly. (periodRange() checks the rest.)
+ */
+export function parsePeriodParams(p: URLSearchParams): DbPeriod | null {
+  const grainParam = p.get("grain");
+  const grain: DbGrain | null =
+    grainParam === null ? "month" : (["day", "month", "year"] as const).find((g) => g === grainParam) ?? null;
+  if (!grain) return null;
+  const from = p.get("from");
+  const to = p.get("to");
+  if (from && to) return { from, to, grain };
+  const fy = parseFiscalYear(p.get("fy"));
+  return fy ? fiscalYearPeriod(fy, grain) : null;
+}
+
+export const PERIOD_HELP =
+  "ระบุช่วงเวลา เช่น ?from=2025-10-01&to=2025-10-31&grain=day (grain: day, month, year) หรือ ?fy=2568";
 
 /** Parses a พ.ศ. fiscal year query param, or returns null if invalid. */
 export function parseFiscalYear(raw: string | null): number | null {

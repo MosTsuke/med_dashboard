@@ -1,5 +1,5 @@
 import type { SupplySource } from "@/lib/supply/source";
-import type { DashboardData, DbReportKind, ReportRecordsPage } from "@/types";
+import type { DashboardData, DbPeriod, DbReportKind, ReportRecordsPage } from "@/types";
 
 /** Browser-side helpers for the /api/db/* routes. */
 
@@ -16,20 +16,35 @@ export function fetchSupplySource() {
   return getJson<{ source: SupplySource }>("/api/db/supply/status").then((r) => r.source);
 }
 
-/** Fiscal years with data for this report, newest first. */
-export function fetchReportYears(kind: DbReportKind) {
-  return getJson<{ configured: boolean; demo?: boolean; years: number[] }>(`/api/db/${kind}/years`);
+export interface ReportDataRange {
+  configured: boolean;
+  demo?: boolean;
+  /** Fiscal years with data, newest first. */
+  years: number[];
+  /** First / last date with data (CE "YYYY-MM-DD"), null when none. */
+  minDate: string | null;
+  maxDate: string | null;
 }
 
-export function fetchReport(kind: DbReportKind, fy: number) {
-  return getJson<DashboardData>(`/api/db/${kind}?fy=${fy}`);
+export function fetchReportYears(kind: DbReportKind) {
+  return getJson<ReportDataRange>(`/api/db/${kind}/years`);
+}
+
+/** Query string for a period: from, to (CE, inclusive) and grain. */
+export function periodQuery(period: DbPeriod): string {
+  return new URLSearchParams({ from: period.from, to: period.to, grain: period.grain }).toString();
+}
+
+export function fetchReport(kind: DbReportKind, period: DbPeriod) {
+  return getJson<DashboardData>(`/api/db/${kind}?${periodQuery(period)}`);
 }
 
 export function fetchReportRecords(
   kind: DbReportKind,
   params: {
-    fy: number;
-    month?: string;
+    /** CE "YYYY-MM-DD", both inclusive. */
+    from: string;
+    to: string;
     department?: string;
     q?: string;
     page: number;
@@ -37,11 +52,11 @@ export function fetchReportRecords(
   }
 ) {
   const qs = new URLSearchParams({
-    fy: String(params.fy),
+    from: params.from,
+    to: params.to,
     page: String(params.page),
     pageSize: String(params.pageSize),
   });
-  if (params.month) qs.set("month", params.month);
   if (params.department) qs.set("department", params.department);
   if (params.q) qs.set("q", params.q);
   return getJson<ReportRecordsPage>(`/api/db/${kind}/rows?${qs}`);

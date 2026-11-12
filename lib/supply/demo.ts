@@ -1,14 +1,17 @@
 import {
   UNKNOWN_DEPARTMENT,
+  bucketKey,
+  dataRangeFrom,
   buildReport,
   formatDate,
   formatDateTime,
+  periodRange,
   rangeForFiscalYear,
-  rangeForRowsQuery,
   type AggregateRow,
+  type DataRange,
   type RecordsQuery,
 } from "@/lib/supply/shape";
-import type { DashboardData, DbReportKind, ReportRecord, ReportRecordsPage } from "@/types";
+import type { DashboardData, DbPeriod, DbReportKind, ReportRecord, ReportRecordsPage } from "@/types";
 
 /**
  * Built-in MADE-UP data for the database reports (สถิติจ่าย, สถิติแพ็ค,
@@ -268,19 +271,26 @@ function inRange(e: DemoEvent, from: Date, to: Date) {
   return e.at >= from.getTime() && e.at < to.getTime();
 }
 
-export function getDemoFiscalYears(): number[] {
-  return [...DEMO_FISCAL_YEARS];
+/** First to last event, kept inside the demo fiscal years (a few packs are
+ * made just before them, and a few come back just after). */
+export function getDemoDataRange(kind: DbReportKind): DataRange {
+  const all = events(kind);
+  if (!all.length) return dataRangeFrom(null, null);
+  const start = rangeForFiscalYear(Math.min(...DEMO_FISCAL_YEARS)).from.getTime();
+  const end = rangeForFiscalYear(Math.max(...DEMO_FISCAL_YEARS)).to.getTime() - 1;
+  return dataRangeFrom(
+    new Date(Math.max(all[0].at, start)),
+    new Date(Math.min(all[all.length - 1].at, end))
+  );
 }
 
-export function getDemoReport(kind: DbReportKind, fy: number): DashboardData {
-  const { from, to } = rangeForFiscalYear(fy);
+export function getDemoReport(kind: DbReportKind, period: DbPeriod): DashboardData {
+  const { from, to } = periodRange(period);
   const groups = new Map<string, AggregateRow>();
   for (const r of events(kind)) {
     if (!inRange(r, from, to)) continue;
-    const d = new Date(r.at);
-    const y = d.getUTCFullYear();
-    const m = d.getUTCMonth() + 1;
-    const key = `${r.set.id}|${r.dept}|${y}|${m}`;
+    const bucket = new Date(r.at);
+    const key = `${r.set.id}|${r.dept}|${bucketKey(bucket, period.grain)}`;
     const g = groups.get(key);
     if (g) g.qty += r.qty;
     else
@@ -290,16 +300,15 @@ export function getDemoReport(kind: DbReportKind, fy: number): DashboardData {
         setPrice: r.set.price,
         packPrice: r.barcode != null ? r.set.price : null,
         department: r.dept,
-        y,
-        m,
+        bucket,
         qty: r.qty,
       });
   }
-  return buildReport(kind, fy, Array.from(groups.values()), { demo: true });
+  return buildReport(kind, period, Array.from(groups.values()), { demo: true });
 }
 
 export function getDemoRecords(kind: DbReportKind, q: RecordsQuery): ReportRecordsPage {
-  const { from, to } = rangeForRowsQuery(q);
+  const { from, to } = q;
   const search = q.search?.trim().toLowerCase();
   // Every demo row has a department, so the "unknown" filter matches nothing.
   const deptOk = (r: DemoEvent) =>

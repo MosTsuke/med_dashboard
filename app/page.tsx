@@ -29,6 +29,7 @@ import DbReportLoader from "@/components/DbReportLoader";
 import ReportRecordsTable from "@/components/ReportRecordsTable";
 import { fetchReport } from "@/lib/db/clientApi";
 import { DB_REPORTS, isDbReportKind } from "@/lib/supply/reports";
+import { fiscalYearPeriod, formatDate, periodLabel, periodRange, rangeForBucket } from "@/lib/supply/shape";
 import { EXCEL_IMPORT_ENABLED } from "@/lib/features";
 import { exportReportPdf } from "@/lib/exportReportPdf";
 import {
@@ -88,18 +89,32 @@ export default function DashboardPage() {
     const params = new URLSearchParams(window.location.search);
 
     // 3. `/?db=supply&fy=2568` — straight from the CSSD database
-    //    (db = supply สถิติจ่าย, pack สถิติแพ็ค or resterile).
+    //    (db = supply สถิติจ่าย, pack สถิติแพ็ค or resterile), for a fiscal
+    //    year month by month, or any range:
+    //    `/?db=supply&from=2025-10-01&to=2025-10-31&grain=day` (day|month|year).
     const dbReport = params.get("db");
     if (dbReport) {
       const fy = Number(params.get("fy"));
-      if (!isDbReportKind(dbReport) || !Number.isInteger(fy)) {
-        setAutoLoadError("ระบุรายงานและปีงบประมาณใน URL เช่น ?db=supply&fy=2568 (รายงาน: supply, pack, resterile)");
+      const grainParam = params.get("grain") ?? "month";
+      const grain = (["day", "month", "year"] as const).find((g) => g === grainParam);
+      const from = params.get("from");
+      const to = params.get("to");
+      const period =
+        grain && from && to
+          ? { from, to, grain }
+          : grain && Number.isInteger(fy) && fy > 2500
+            ? fiscalYearPeriod(fy, grain)
+            : null;
+      if (!isDbReportKind(dbReport) || !period) {
+        setAutoLoadError(
+          "ระบุรายงานและช่วงเวลาใน URL เช่น ?db=supply&fy=2568 หรือ ?db=supply&from=2025-10-01&to=2025-10-31&grain=day (รายงาน: supply, pack, resterile)"
+        );
         setAutoLoadState("error");
         return;
       }
       let cancelled = false;
       setAutoLoadState("loading");
-      fetchReport(dbReport, fy)
+      fetchReport(dbReport, period)
         .then((d) => {
           if (cancelled) return;
           handleDataLoaded(d);
@@ -254,9 +269,25 @@ export default function DashboardPage() {
     () => (departmentView ? sliceByMonth(departmentView, selectedMonth) : null),
     [departmentView, selectedMonth]
   );
-  const dbFiscalYear = data?.source?.kind === "db" ? data.source.fiscalYear : null;
+  const dbPeriod = data?.source?.kind === "db" ? data.source.period : null;
   const dbReport = data?.source?.kind === "db" ? data.source.report : null;
-  const dbIsMain = dbSource === "db" || dbSource === "demo" || dbFiscalYear != null;
+  const dbIsMain = dbSource === "db" || dbSource === "demo" || dbPeriod != null;
+
+  /** The record list follows the bucket picked in the filter (a day, month
+   * or fiscal year), clipped to the report's period. CE dates, inclusive. */
+  const recordsRange = useMemo(() => {
+    if (!dbPeriod) return null;
+    if (selectedMonth === ALL_MONTHS) return { from: dbPeriod.from, to: dbPeriod.to, label: periodLabel(dbPeriod) };
+    const whole = periodRange(dbPeriod);
+    const bucket = rangeForBucket(selectedMonth);
+    const from = bucket.from > whole.from ? bucket.from : whole.from;
+    const to = bucket.to < whole.to ? bucket.to : whole.to;
+    return {
+      from: formatDate(from),
+      to: formatDate(new Date(to.getTime() - 86_400_000)),
+      label: formatMonthLabel(selectedMonth),
+    };
+  }, [dbPeriod, selectedMonth]);
 
   const hasItems = (viewData?.items?.length ?? 0) > 0;
   const hasDepartments = (viewData?.departments?.length ?? 0) > 0;
@@ -351,11 +382,11 @@ export default function DashboardPage() {
                 </span>
               </div>
             )}
-            {dbFiscalYear && (
+            {dbPeriod && (
               <DbReportLoader
                 variant="compact"
                 currentReport={dbReport ?? undefined}
-                currentFiscalYear={dbFiscalYear}
+                currentPeriod={dbPeriod}
                 onDataLoaded={handleDataLoaded}
                 onLoadingChange={setImporting}
                 onSourceChange={setDbSource}
@@ -537,7 +568,7 @@ export default function DashboardPage() {
                   <ListTree size={15} />
                   รายละเอียดย่อย
                 </button>
-                {dbFiscalYear && dbReport && (
+                {dbPeriod && dbReport && (
                   <button
                     onClick={() => handleTabChange("records")}
                     className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
@@ -573,7 +604,7 @@ export default function DashboardPage() {
                     widthClass="w-48"
                     searchPlaceholder="ค้นหาเดือน..."
                     options={[
-                      { value: ALL_MONTHS, label: "ทั้งปี" },
+                      { value: ALL_MONTHS, label: dbPeriod ? "ทั้งช่วง" : "ทั้งปี" },
                       ...data!.monthly!.map((m) => ({ value: m.month, label: formatMonthLabel(m.month) })),
                     ]}
                   />
@@ -626,11 +657,12 @@ export default function DashboardPage() {
             )}
 
             {/* ── RECORDS TAB (DB-backed reports only) ── */}
-            {tab === "records" && dbFiscalYear && dbReport && (
+            {tab === "records" && recordsRange && dbReport && (
               <ReportRecordsTable
                 report={dbReport}
-                fiscalYear={dbFiscalYear}
-                month={selectedMonth === ALL_MONTHS ? undefined : selectedMonth}
+                from={recordsRange.from}
+                to={recordsRange.to}
+                scope={recordsRange.label}
                 department={selectedDepartment === ALL_DEPARTMENTS ? undefined : selectedDepartment}
               />
             )}
@@ -640,10 +672,11 @@ export default function DashboardPage() {
               <ItemMonthlyDetail
                 item={selectedItem}
                 monthOrder={data.monthly.map((m) => m.month)}
+                grain={dbPeriod?.grain}
                 onBack={() => handleTabChange("detail")}
                 valueKind={data.valueKind}
                 department={
-                  dbFiscalYear && selectedDepartment !== ALL_DEPARTMENTS ? selectedDepartment : undefined
+                  dbPeriod && selectedDepartment !== ALL_DEPARTMENTS ? selectedDepartment : undefined
                 }
               />
             )}

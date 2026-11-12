@@ -56,8 +56,8 @@ export function isDbReportKind(value: unknown): value is DbReportKind {
   return typeof value === "string" && value in DB_REPORTS;
 }
 
-/** "สถิติจ่าย ปีงบประมาณ 2568", "สถิติ Resterile ปีงบประมาณ 2568". */
-export function reportTitle(kind: DbReportKind, fy: number): string {
+/** "สถิติจ่าย ปีงบประมาณ 2568", "สถิติ Resterile 1 ต.ค. 2568 – 7 พ.ย. 2568". */
+export function reportTitle(kind: DbReportKind, periodText: string): string {
   const label = kind === "resterile" ? "สถิติ Resterile" : DB_REPORTS[kind].label;
-  return `${label} ปีงบประมาณ ${fy}`;
+  return `${label} ${periodText}`;
 }

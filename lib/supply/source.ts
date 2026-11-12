@@ -1,8 +1,8 @@
 import { DbNotConfiguredError, isDbConfigured } from "@/lib/db/client";
-import { getDbFiscalYears, getDbRecords, getDbReport } from "@/lib/db/reports";
-import { getDemoFiscalYears, getDemoRecords, getDemoReport } from "@/lib/supply/demo";
-import type { RecordsQuery } from "@/lib/supply/shape";
-import type { DashboardData, DbReportKind, ReportRecordsPage } from "@/types";
+import { getDbDataRange, getDbRecords, getDbReport } from "@/lib/db/reports";
+import { getDemoDataRange, getDemoRecords, getDemoReport } from "@/lib/supply/demo";
+import type { DataRange, RecordsQuery } from "@/lib/supply/shape";
+import type { DashboardData, DbPeriod, DbReportKind, ReportRecordsPage } from "@/types";
 
 /**
  * Where the database reports (สถิติจ่าย, สถิติแพ็ค, Resterile) come from:
@@ -23,17 +23,17 @@ export function supplySource(): SupplySource {
   return process.env.VERCEL === "1" ? "demo" : "none";
 }
 
-export async function fiscalYears(kind: DbReportKind): Promise<number[]> {
+export async function dataRange(kind: DbReportKind): Promise<DataRange> {
   const src = supplySource();
-  if (src === "demo") return getDemoFiscalYears();
-  if (src === "db") return getDbFiscalYears(kind);
+  if (src === "demo") return getDemoDataRange(kind);
+  if (src === "db") return getDbDataRange(kind);
   throw new DbNotConfiguredError();
 }
 
-export async function report(kind: DbReportKind, fy: number): Promise<DashboardData> {
+export async function report(kind: DbReportKind, period: DbPeriod): Promise<DashboardData> {
   const src = supplySource();
-  if (src === "demo") return getDemoReport(kind, fy);
-  if (src === "db") return getDbReport(kind, fy);
+  if (src === "demo") return getDemoReport(kind, period);
+  if (src === "db") return getDbReport(kind, period);
   throw new DbNotConfiguredError();
 }
 

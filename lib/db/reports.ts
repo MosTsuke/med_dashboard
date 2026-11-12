@@ -3,44 +3,38 @@ import { REPORT_SQL } from "@/lib/db/cssdQueries";
 import {
   UNKNOWN_DEPARTMENT,
   buildReport,
-  fiscalYearOf,
+  dataRangeFrom,
   formatDate,
   formatDateTime,
   itemNameFor,
-  rangeForFiscalYear,
-  rangeForRowsQuery,
+  periodRange,
   type AggregateRow,
+  type DataRange,
   type RecordsQuery,
 } from "@/lib/supply/shape";
-import type { DashboardData, DbReportKind, ReportRecord, ReportRecordsPage } from "@/types";
+import type { DashboardData, DbPeriod, DbReportKind, ReportRecord, ReportRecordsPage } from "@/types";
 
 /** The database reports (สถิติจ่าย, สถิติแพ็ค, Resterile) read live from
  * the hospital's CSSD SQL Server. */
 
-/** Fiscal years that have at least one row for this report, newest first. */
-export async function getDbFiscalYears(kind: DbReportKind): Promise<number[]> {
+export async function getDbDataRange(kind: DbReportKind): Promise<DataRange> {
   const pool = await getPool();
   const { recordset } = await pool
     .request()
     .query<{ minDate: Date | null; maxDate: Date | null }>(REPORT_SQL[kind].dateRange);
-  const { minDate, maxDate } = recordset[0] ?? {};
-  if (!minDate || !maxDate) return [];
-  const first = fiscalYearOf(minDate.getUTCFullYear(), minDate.getUTCMonth() + 1);
-  const last = fiscalYearOf(maxDate.getUTCFullYear(), maxDate.getUTCMonth() + 1);
-  const years: number[] = [];
-  for (let fy = last; fy >= first; fy--) years.push(fy);
-  return years;
+  const { minDate = null, maxDate = null } = recordset[0] ?? {};
+  return dataRangeFrom(minDate, maxDate);
 }
 
-export async function getDbReport(kind: DbReportKind, fy: number): Promise<DashboardData> {
-  const { from, to } = rangeForFiscalYear(fy);
+export async function getDbReport(kind: DbReportKind, period: DbPeriod): Promise<DashboardData> {
+  const { from, to } = periodRange(period);
   const pool = await getPool();
   const { recordset } = await pool
     .request()
     .input("from", sql.DateTime, from)
     .input("to", sql.DateTime, to)
-    .query<AggregateRow>(REPORT_SQL[kind].aggregate);
-  return buildReport(kind, fy, recordset);
+    .query<AggregateRow>(REPORT_SQL[kind].aggregate[period.grain]);
+  return buildReport(kind, period, recordset);
 }
 
 interface RawRecord {
@@ -60,7 +54,7 @@ interface RawRecord {
 
 /** Individual records, newest first, one page at a time. */
 export async function getDbRecords(kind: DbReportKind, q: RecordsQuery): Promise<ReportRecordsPage> {
-  const { from, to } = rangeForRowsQuery(q);
+  const { from, to } = q;
   const noDepartment = q.department === UNKNOWN_DEPARTMENT;
   const search = q.search?.trim()
     ? `%${q.search.trim().replace(/[\\%_[]/g, (c) => `\\${c}`)}%`

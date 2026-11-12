@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import type { MonthlyPoint } from "@/types";
 import { formatNumber } from "@/lib/formatNumber";
-import { formatMonthLabel } from "@/lib/monthlyView";
+import { formatBucketTick, formatMonthLabel } from "@/lib/monthlyView";
 import ReportSectionHeader from "@/components/ReportSectionHeader";
 import { TrendingUp } from "lucide-react";
 
@@ -21,6 +21,8 @@ interface Props {
   /** Unit shown in the tooltip — "ชิ้น" by default, but e.g. "เซต" for
    * reports like "สถิติล้าง" whose quantity actually tracks sets. */
   unit?: string;
+  /** Section title; defaults to the per-month one. */
+  title?: string;
 }
 
 const makeTooltip = (unit: string) =>
@@ -46,11 +48,11 @@ const makeTooltip = (unit: string) =>
     return null;
   };
 
-export default function MonthlyTrendChart({ data, onMonthClick, unit = "ชิ้น" }: Props) {
+export default function MonthlyTrendChart({ data, onMonthClick, unit = "ชิ้น", title = "แนวโน้มจำนวนรายเดือน" }: Props) {
   const CustomTooltip = makeTooltip(unit);
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-md overflow-hidden">
-      <ReportSectionHeader title="แนวโน้มจำนวนรายเดือน" icon={TrendingUp} />
+      <ReportSectionHeader title={title} icon={TrendingUp} />
       <div className="p-5">
         <ResponsiveContainer width="100%" height={300}>
           <LineChart
@@ -66,7 +68,7 @@ export default function MonthlyTrendChart({ data, onMonthClick, unit = "ชิ�
             <XAxis
               dataKey="month"
               tick={{ fontSize: 11, fill: "#6b7280" }}
-              tickFormatter={(v) => formatMonthLabel(String(v))}
+              tickFormatter={(v) => formatBucketTick(String(v))}
             />
             <YAxis
               tick={{ fontSize: 11, fill: "#6b7280" }}
