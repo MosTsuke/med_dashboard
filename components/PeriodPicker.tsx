@@ -22,7 +22,6 @@ interface Props {
   disabled?: boolean;
 }
 
-const GRAINS: DbGrain[] = ["day", "month", "year"];
 const DAY_MS = 86_400_000;
 const THAI_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const WEEKDAYS = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
@@ -61,7 +60,6 @@ interface Preset {
   label: string;
   from: string;
   to: string;
-  grain: DbGrain;
 }
 
 function presets(anchor: string): Preset[] {
@@ -70,19 +68,19 @@ function presets(anchor: string): Preset[] {
   const lastFy = fiscalYearPeriod(fy - 1);
   const lastMonthStart = firstOfMonth(anchor, -1);
   return [
-    { id: "today", label: "วันนี้", from: anchor, to: anchor, grain: "day" },
-    { id: "last7", label: "7 วันล่าสุด", from: addDays(anchor, -6), to: anchor, grain: "day" },
-    { id: "last30", label: "30 วันล่าสุด", from: addDays(anchor, -29), to: anchor, grain: "day" },
-    { id: "thisMonth", label: "เดือนนี้", from: firstOfMonth(anchor), to: anchor, grain: "day" },
-    { id: "lastMonth", label: "เดือนที่แล้ว", from: lastMonthStart, to: lastOfMonth(lastMonthStart), grain: "day" },
-    { id: "thisFy", label: "ปีงบนี้", from: thisFy.from, to: thisFy.to, grain: "month" },
-    { id: "lastFy", label: "ปีงบที่แล้ว", from: lastFy.from, to: lastFy.to, grain: "month" },
+    { id: "today", label: "วันนี้", from: anchor, to: anchor },
+    { id: "last7", label: "7 วันล่าสุด", from: addDays(anchor, -6), to: anchor },
+    { id: "last30", label: "30 วันล่าสุด", from: addDays(anchor, -29), to: anchor },
+    { id: "thisMonth", label: "เดือนนี้", from: firstOfMonth(anchor), to: anchor },
+    { id: "lastMonth", label: "เดือนที่แล้ว", from: lastMonthStart, to: lastOfMonth(lastMonthStart) },
+    { id: "thisFy", label: "ปีงบนี้", from: thisFy.from, to: thisFy.to },
+    { id: "lastFy", label: "ปีงบที่แล้ว", from: lastFy.from, to: lastFy.to },
   ];
 }
 
-/** A sensible way to show a range picked on the calendar: by day up to two
- * months, by month up to two years, by fiscal year beyond. */
-function suggestedGrain(from: string, to: string): DbGrain {
+/** How a range is shown — chosen for you, there's no switch: by day up to
+ * two months, by month up to two years, by fiscal year beyond. */
+export function grainForRange(from: string, to: string): DbGrain {
   const days = Math.round((toDate(to).getTime() - toDate(from).getTime()) / DAY_MS) + 1;
   return days <= 62 ? "day" : days <= 731 ? "month" : "year";
 }
@@ -116,9 +114,8 @@ function shortDate(s: string): string {
 /**
  * Pick a time range on a Buddhist-era calendar — click the first day, then
  * the last — or with a quick choice on the left (today, the last 7 / 30
- * days, this / last month, this / last fiscal year). Then choose how to
- * show it: รายวัน / รายเดือน / รายปี (fiscal years); picking a range
- * suggests one.
+ * days, this / last month, this / last fiscal year). Whether it's shown
+ * รายวัน / รายเดือน / รายปี follows from its length (grainForRange).
  */
 export default function PeriodPicker({ bounds, value, onChange, disabled }: Props) {
   const anchor = anchorDate(bounds);
@@ -146,7 +143,7 @@ export default function PeriodPicker({ bounds, value, onChange, disabled }: Prop
     }
     setPickingEnd(false);
     const [from, to] = day < value.from ? [day, value.from] : [value.from, day];
-    onChange({ from, to, grain: suggestedGrain(from, to) });
+    onChange({ from, to, grain: grainForRange(from, to) });
   };
 
   // Months you can jump to, newest first.
@@ -172,7 +169,7 @@ export default function PeriodPicker({ bounds, value, onChange, disabled }: Prop
               aria-pressed={current?.id === o.id}
               onClick={() => {
                 setPickingEnd(false);
-                onChange({ from: o.from, to: o.to, grain: o.grain });
+                onChange({ from: o.from, to: o.to, grain: grainForRange(o.from, o.to) });
               }}
               className={`text-sm px-3 py-1.5 rounded-lg border text-left transition-colors ${
                 current?.id === o.id
@@ -253,33 +250,16 @@ export default function PeriodPicker({ bounds, value, onChange, disabled }: Prop
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-gray-500">แสดงผล</span>
-        <div role="radiogroup" aria-label="แสดงผล" className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-          {GRAINS.map((g) => (
-            <button
-              key={g}
-              type="button"
-              role="radio"
-              aria-checked={value.grain === g}
-              disabled={disabled}
-              onClick={() => onChange({ ...value, grain: g })}
-              className={`text-sm px-3 py-1 rounded-md transition-colors ${
-                value.grain === g ? "bg-white text-blue-700 shadow-sm font-medium" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {GRAIN_LABEL[g]}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <p className="text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2">
         <span className="text-gray-500">ช่วงที่เลือก: </span>
         {value.from === value.to
           ? formatThaiIsoDate(value.from)
           : `${formatThaiIsoDate(value.from)} – ${formatThaiIsoDate(value.to)}`}
-        {pickingEnd && <span className="text-blue-600"> · กดวันสุดท้ายของช่วง</span>}
+        {pickingEnd ? (
+          <span className="text-blue-600"> · กดวันสุดท้ายของช่วง</span>
+        ) : (
+          <span className="text-gray-500"> · แสดงเป็น{GRAIN_LABEL[value.grain]}</span>
+        )}
       </p>
 
       {error && !pickingEnd && (
