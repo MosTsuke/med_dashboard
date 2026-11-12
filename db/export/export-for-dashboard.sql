@@ -10,14 +10,18 @@
 
    ความปลอดภัย:
      - อ่านจากฐานข้อมูล CSSD อย่างเดียว ไม่แก้ไขอะไรในนั้น
+       และอ่านแบบไม่ล็อกตาราง (NOLOCK) จึงไม่ขวางโปรแกรม CSSD ที่ใช้งานอยู่
      - สร้างฐานข้อมูลชั่วคราวชื่อ CSSD_Export → backup ออกเป็นไฟล์ → ลบทิ้งให้อัตโนมัติ
      - ชื่อเจ้าหน้าที่ในไฟล์ที่ส่งออกจะเป็น "เจ้าหน้าที่ <รหัส>" (ข้อมูลจริงไม่เปลี่ยน)
      - ต้องรันด้วยบัญชีที่สร้างฐานข้อมูลและ backup ได้ (เช่น sa หรือผู้ดูแลระบบ)
 
-   สิ่งที่อยู่ในไฟล์ที่ได้:
-     - SupplyTb (การจ่าย) เฉพาะช่วง @From ถึงก่อน @To
-     - PackTb เฉพาะแพ็คที่ถูกจ่ายในช่วงนั้น
-     - ตารางอ้างอิงทั้งตาราง: DayCountTb, SetTb, SetTypeTb,
+   สิ่งที่อยู่ในไฟล์ที่ได้ (ช่วง @From ถึงก่อน @To):
+     - SupplyTb (สถิติจ่าย)
+     - PackTb (สถิติแพ็ค): ห่อที่แพ็คในช่วงนั้น
+       รวมห่อที่ถูกจ่ายหรือส่งกลับมา resterile ในช่วงนั้นด้วย
+     - DemandTb (resterile และการเบิก/คืน)
+     - ตารางอ้างอิงทั้งตาราง: DayCountTb, SetTb, SetTypeTb, ReCauseTb (สาเหตุ resterile),
+       SterileTb (วิธีฆ่าเชื้อ), MachineTb (เครื่อง), RoundTb (รอบ),
        DepartTb (ไม่รวมรหัสผ่าน), PersonTb (เฉพาะรหัส + ชื่อที่ปิดแล้ว)
      - โครงสร้างของทั้งฐานข้อมูล: ชื่อตาราง ชื่อคอลัมน์ ชนิดข้อมูล key จำนวนแถว
        และโค้ดของ view/stored procedure (ไม่มีข้อมูลในตารางอื่นติดไปด้วย)
@@ -25,8 +29,9 @@
 
 SET NOCOUNT ON;
 
-DECLARE @From DATE = '20241001';   -- วันแรกที่ต้องการ          (1 ต.ค. 2567)
-DECLARE @To   DATE = '20251001';   -- วันถัดจากวันสุดท้าย (ไม่รวม) (= ถึง 30 ก.ย. 2568)
+DECLARE @From DATE = '20241001';   -- วันแรกที่ต้องการ (1 ต.ค. 2567 = ต้นปีงบ 2568)
+DECLARE @To   DATE = DATEADD(day, 1, CAST(GETDATE() AS date));
+                                   -- วันถัดจากวันสุดท้าย (ไม่รวม) — ค่าตั้งต้น = ถึงวันนี้
 DECLARE @MaskStaffNames BIT = 1;   -- 1 = ปิดชื่อเจ้าหน้าที่, 0 = ส่งชื่อจริง
 
 IF DB_ID(N'CSSD') IS NULL
@@ -47,22 +52,29 @@ BEGIN TRY
   PRINT N'สร้างฐานข้อมูลชั่วคราว CSSD_Export แล้ว';
 
   -- ── 1. Data tables ─────────────────────────────────────────────────────
-  DECLARE @tables TABLE (seq INT IDENTITY, name SYSNAME, kind VARCHAR(10));
-  INSERT @tables (name, kind) VALUES
-    (N'SupplyTb',   'dated'),
-    (N'PackTb',     'packs'),
-    (N'DepartTb',   'all'),
-    (N'DayCountTb', 'all'),
-    (N'SetTb',      'all'),
-    (N'SetTypeTb',  'all'),
-    (N'PersonTb',   'person');
+  -- kind: 'dated' = rows whose datecol falls in the range; 'packs' = see
+  -- below; 'person' = ids + masked names; 'all' = the whole (small) table.
+  DECLARE @tables TABLE (seq INT IDENTITY, name SYSNAME, kind VARCHAR(10), datecol SYSNAME NULL);
+  INSERT @tables (name, kind, datecol) VALUES
+    (N'SupplyTb',   'dated',  N'SupplyDate'),
+    (N'DemandTb',   'dated',  N'DemandDate'),
+    (N'PackTb',     'packs',  NULL),
+    (N'DepartTb',   'all',    NULL),
+    (N'DayCountTb', 'all',    NULL),
+    (N'SetTb',      'all',    NULL),
+    (N'SetTypeTb',  'all',    NULL),
+    (N'ReCauseTb',  'all',    NULL),
+    (N'SterileTb',  'all',    NULL),
+    (N'MachineTb',  'all',    NULL),
+    (N'RoundTb',    'all',    NULL),
+    (N'PersonTb',   'person', NULL);
 
   DECLARE @i INT = 1, @n INT = (SELECT COUNT(*) FROM @tables);
-  DECLARE @name SYSNAME, @kind VARCHAR(10), @sql NVARCHAR(MAX), @cols NVARCHAR(MAX), @rows BIGINT;
+  DECLARE @name SYSNAME, @kind VARCHAR(10), @datecol SYSNAME, @sql NVARCHAR(MAX), @cols NVARCHAR(MAX), @rows BIGINT;
 
   WHILE @i <= @n
   BEGIN
-    SELECT @name = name, @kind = kind FROM @tables WHERE seq = @i;
+    SELECT @name = name, @kind = kind, @datecol = datecol FROM @tables WHERE seq = @i;
 
     IF OBJECT_ID(N'CSSD.dbo.' + QUOTENAME(@name), N'U') IS NULL
       PRINT N'- ข้าม ' + @name + N' (ไม่มีตารางนี้)';
@@ -78,22 +90,30 @@ BEGIN TRY
       SET @sql = CASE @kind
         WHEN 'dated' THEN
           N'SELECT ' + @cols + N' INTO CSSD_Export.dbo.' + QUOTENAME(@name) +
-          N' FROM CSSD.dbo.' + QUOTENAME(@name) +
-          N' WHERE SupplyDate >= @From AND SupplyDate < @To'
+          N' FROM CSSD.dbo.' + QUOTENAME(@name) + N' WITH (NOLOCK)' +
+          N' WHERE ' + QUOTENAME(@datecol) + N' >= @From AND ' + QUOTENAME(@datecol) + N' < @To'
         WHEN 'packs' THEN
-          -- only packs dispensed in the range (PackTb holds every pack ever made)
-          N'SELECT ' + @cols + N' INTO CSSD_Export.dbo.PackTb FROM CSSD.dbo.PackTb
-            WHERE PackTbNo IN (SELECT PackTbNo FROM CSSD.dbo.SupplyTb
-                               WHERE SupplyDate >= @From AND SupplyDate < @To)'
+          -- PackTb holds every pack ever made. Take the packs made in the
+          -- range (สถิติแพ็ค) plus older packs that were dispensed or sent
+          -- back for resterile in the range, so those rows can still look
+          -- up their pack.
+          N'SELECT ' + @cols + N' INTO CSSD_Export.dbo.PackTb FROM CSSD.dbo.PackTb WITH (NOLOCK)
+            WHERE (SetTbPackDate >= @From AND SetTbPackDate < @To)
+               OR PackTbNo IN (SELECT PackTbNo FROM CSSD.dbo.SupplyTb WITH (NOLOCK)
+                               WHERE SupplyDate >= @From AND SupplyDate < @To)' +
+          CASE WHEN OBJECT_ID(N'CSSD.dbo.DemandTb', N'U') IS NOT NULL THEN N'
+               OR PackTbNo IN (SELECT PackTbNo FROM CSSD.dbo.DemandTb WITH (NOLOCK)
+                               WHERE DemandDate >= @From AND DemandDate < @To)'
+          ELSE N'' END
         WHEN 'person' THEN
           N'SELECT PersonTbId,
                    CASE WHEN @Mask = 1 AND PersonCall IS NOT NULL AND PersonCall <> N''/''
                         THEN N''เจ้าหน้าที่ '' + CAST(PersonTbId AS NVARCHAR(20))
                         ELSE PersonCall END AS PersonCall
-            INTO CSSD_Export.dbo.PersonTb FROM CSSD.dbo.PersonTb'
+            INTO CSSD_Export.dbo.PersonTb FROM CSSD.dbo.PersonTb WITH (NOLOCK)'
         ELSE
           N'SELECT ' + @cols + N' INTO CSSD_Export.dbo.' + QUOTENAME(@name) +
-          N' FROM CSSD.dbo.' + QUOTENAME(@name)
+          N' FROM CSSD.dbo.' + QUOTENAME(@name) + N' WITH (NOLOCK)'
       END + N'; SET @rows = @@ROWCOUNT;';
 
       EXEC sp_executesql @sql,
