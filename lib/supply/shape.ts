@@ -1,11 +1,13 @@
-import type { DashboardData, DepartmentData, ItemData, MonthlyPoint, ValueKind } from "@/types";
+import { reportTitle } from "@/lib/supply/reports";
+import type { DashboardData, DbReportKind, DepartmentData, ItemData, MonthlyPoint, ValueKind } from "@/types";
 
 /**
- * Pure helpers shared by every "สถิติจ่าย" data source (the CSSD database
- * and the built-in demo data). No database imports here on purpose.
+ * Pure helpers shared by every data source for the database reports
+ * (สถิติจ่าย, สถิติแพ็ค, Resterile — from the CSSD database or the built-in
+ * demo data). No database imports here on purpose.
  */
 
-/** Label for dispense rows whose department didn't resolve to a name. */
+/** Label for rows whose department didn't resolve to a name. */
 export const UNKNOWN_DEPARTMENT = "(ไม่ระบุหน่วยงาน)";
 
 const BE_OFFSET = 543;
@@ -58,13 +60,14 @@ export function formatDate(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
-/** One group of dispenses: set × department × calendar month. */
+/** One group of events (dispenses, packs, resterile packs): set ×
+ * department × calendar month. */
 export interface AggregateRow {
   setId: number | null;
   setName: string | null;
   /** Current set price — null when the set has since been deleted. */
   setPrice: number | null;
-  /** Price stamped on the dispensed packs (barcoded packs only). */
+  /** Price stamped on the packs involved (packs only). */
   packPrice: number | null;
   department: string | null;
   y: number;
@@ -72,7 +75,7 @@ export interface AggregateRow {
   qty: number;
 }
 
-export interface SupplyRowsQuery {
+export interface RecordsQuery {
   fy: number;
   /** "2567-10"-style key; must fall inside `fy`. Omit for the whole year. */
   month?: string;
@@ -83,19 +86,27 @@ export interface SupplyRowsQuery {
 }
 
 /** The [from, to) range a rows query covers; throws RangeError for a month outside `fy`. */
-export function rangeForRowsQuery(q: SupplyRowsQuery): { from: Date; to: Date } {
+export function rangeForRowsQuery(q: RecordsQuery): { from: Date; to: Date } {
   if (q.month && !fiscalMonthKeys(q.fy).includes(q.month)) {
     throw new RangeError(`เดือน ${q.month} ไม่อยู่ในปีงบประมาณ ${q.fy}`);
   }
   return q.month ? rangeForMonth(q.month) : rangeForFiscalYear(q.fy);
 }
 
+/** Unit of one counted event, for the "จำนวนรวม" stat. */
+const QUANTITY_UNIT: Record<DbReportKind, string> = {
+  supply: "ชิ้น",
+  pack: "ห่อ",
+  resterile: "ห่อ",
+};
+
 /**
- * "สถิติจ่าย" for one fiscal year, shaped exactly like the monthly-matrix
+ * One report for one fiscal year, shaped exactly like the monthly-matrix
  * Excel report (so every existing chart/table works unchanged), plus a
  * per-department breakdown the Excel report never had.
  */
-export function buildSupplyReport(
+export function buildReport(
+  kind: DbReportKind,
   fy: number,
   rows: AggregateRow[],
   opts: { demo?: boolean } = {}
@@ -156,7 +167,7 @@ export function buildSupplyReport(
 
   const monthly: MonthlyPoint[] = months.map((month) => ({ month, quantity: monthTotals[month] ?? 0 }));
 
-  // The period shown is first to last month that actually has dispenses, so
+  // The period shown is first to last month that actually has events, so
   // a fiscal year still in progress reads "10/2569 – 11/2569", not as if the
   // whole year were in. (The charts still lay out all 12 fiscal months.)
   const monthsWithData = months.filter((m) => monthTotals[m] > 0);
@@ -170,12 +181,12 @@ export function buildSupplyReport(
     totalLabel: "ราคารวม",
     unit: "บาท",
     decimals: 2,
-    quantityUnit: "ชิ้น",
+    quantityUnit: QUANTITY_UNIT[kind],
   };
 
   return {
     period,
-    reportName: `สถิติจ่ายปีงบประมาณ ${fy}${opts.demo ? " (ข้อมูลจำลอง)" : ""}`,
+    reportName: `${reportTitle(kind, fy)}${opts.demo ? " (ข้อมูลจำลอง)" : ""}`,
     fiscalYear: String(fy),
     summary: {
       totalItems,
@@ -189,6 +200,6 @@ export function buildSupplyReport(
     monthly,
     valueKind,
     reportType: "monthly",
-    source: { kind: "db", report: "supply", fiscalYear: fy, ...(opts.demo ? { demo: true } : {}) },
+    source: { kind: "db", report: kind, fiscalYear: fy, ...(opts.demo ? { demo: true } : {}) },
   };
 }

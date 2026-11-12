@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbErrorResponse, parseFiscalYear } from "@/lib/db/apiErrors";
-import { supplyRows } from "@/lib/supply/source";
+import { dbErrorResponse, parseFiscalYear, unknownReportResponse } from "@/lib/db/apiErrors";
+import { isDbReportKind } from "@/lib/supply/reports";
+import { records } from "@/lib/supply/source";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,10 +9,11 @@ export const runtime = "nodejs";
 const MAX_PAGE_SIZE = 200;
 
 /**
- * GET /api/db/supply/rows?fy=2568[&month=2567-10][&department=ER][&q=...][&page=1&pageSize=50]
- * → { rows, total } — individual dispense records, newest first.
+ * GET /api/db/<report>/rows?fy=2568[&month=2567-10][&department=ER][&q=...][&page=1&pageSize=50]
+ * → { rows, total } — individual records, newest first.
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
+  if (!isDbReportKind(params.report)) return unknownReportResponse();
   const p = req.nextUrl.searchParams;
   const fy = parseFiscalYear(p.get("fy"));
   if (!fy) {
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
 
   try {
     return NextResponse.json(
-      await supplyRows({
+      await records(params.report, {
         fy,
         month,
         department: p.get("department")?.slice(0, 100) || undefined,
@@ -39,6 +41,6 @@ export async function GET(req: NextRequest) {
       })
     );
   } catch (err) {
-    return dbErrorResponse(err, `supply rows fy=${fy}`);
+    return dbErrorResponse(err, `${params.report} rows fy=${fy}`);
   }
 }

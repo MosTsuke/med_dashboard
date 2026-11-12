@@ -1,18 +1,19 @@
 import {
   UNKNOWN_DEPARTMENT,
-  buildSupplyReport,
+  buildReport,
   formatDate,
   formatDateTime,
   rangeForFiscalYear,
   rangeForRowsQuery,
   type AggregateRow,
-  type SupplyRowsQuery,
+  type RecordsQuery,
 } from "@/lib/supply/shape";
-import type { DashboardData, SupplyRow, SupplyRowsPage } from "@/types";
+import type { DashboardData, DbReportKind, ReportRecord, ReportRecordsPage } from "@/types";
 
 /**
- * Built-in MADE-UP "สถิติจ่าย" data for online demos (e.g. the Vercel
- * deployment), so every DB-backed screen works without a database.
+ * Built-in MADE-UP data for the database reports (สถิติจ่าย, สถิติแพ็ค,
+ * Resterile) for online demos (e.g. the Vercel deployment), so every
+ * DB-backed screen works without a database.
  *
  * Nothing here comes from any hospital: set names are generic CSSD terms,
  * departments and staff are placeholders, and the numbers come from a
@@ -20,6 +21,8 @@ import type { DashboardData, SupplyRow, SupplyRowsPage } from "@/types";
  * data's shape: barcoded packs dispensed one per row with an expiry date,
  * consumables dispensed in batches without one, fewer dispenses at
  * weekends, and a handful of packs dispensed after their expiry date.
+ * Every dispensed pack was packed first; a few percent more packs are made
+ * but never go out, and come back for resterile — mostly once expired.
  */
 
 export const DEMO_FISCAL_YEARS = [2569, 2568];
@@ -77,9 +80,23 @@ const SETS: DemoSet[] = [
   { id: 5006, name: "ไม้กดลิ้น", price: 3, shelf: 0, perDay: 0.4, home: [0, 1], batch: [10, 20] },
 ];
 
-interface DemoRow {
-  supplyNo: number;
-  /** Wall-clock time as a UTC timestamp (same convention as the DB code). */
+/** Sterilization method per set; anything not listed is steam. */
+const STERILE: Record<number, string> = {
+  10: "HYDROGEN PLASMA",
+  15: "ETHYLENE OXIDE",
+  16: "ETHYLENE OXIDE",
+  17: "ETHYLENE OXIDE",
+};
+const sterileOf = (set: DemoSet) => STERILE[set.id] ?? "STEAM AUTOCLAVE";
+
+/** Resterile reasons; the first (expired) is by far the most common. */
+const CAUSES = ["หมดอายุ", "ความสะอาด", "เครื่องมือไม่ถูกต้อง", "หีบห่อมีปัญหา"];
+
+/** One dispense, pack or resterile pack. */
+interface DemoEvent {
+  id: number;
+  /** Wall-clock time as a UTC timestamp (same convention as the DB code);
+   * midnight for packs, which only have a date. */
   at: number;
   set: DemoSet;
   dept: string;
@@ -87,7 +104,12 @@ interface DemoRow {
   qty: number;
   barcode: number | null;
   expiry: number | null;
+  /** Sterilization method (pack) or reason (resterile). */
+  note: string | null;
 }
+
+const withIds = (events: Omit<DemoEvent, "id">[]): DemoEvent[] =>
+  events.sort((a, b) => a.at - b.at).map((e, i) => ({ ...e, id: i + 1 }));
 
 /** mulberry32 — tiny deterministic PRNG. */
 function prng(seed: number) {
@@ -103,7 +125,7 @@ function prng(seed: number) {
 
 const DAY = 86_400_000;
 
-function generate(): DemoRow[] {
+function generateSupply(): DemoEvent[] {
   const rand = prng(2568);
   const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
   const poisson = (lambda: number) => {
@@ -117,7 +139,7 @@ function generate(): DemoRow[] {
     return k;
   };
 
-  const out: Omit<DemoRow, "supplyNo">[] = [];
+  const out: Omit<DemoEvent, "id">[] = [];
   let barcode = 100000;
   const first = rangeForFiscalYear(Math.min(...DEMO_FISCAL_YEARS)).from.getTime();
   const end = rangeForFiscalYear(Math.max(...DEMO_FISCAL_YEARS)).to.getTime();
@@ -136,7 +158,7 @@ function generate(): DemoRow[] {
         const at = day + (8 * 60 + Math.floor(rand() * 510)) * 60_000; // 08:00–16:30
         const dept = rand() < 0.85 ? DEPARTMENTS[pick(set.home)] : pick(DEPARTMENTS);
         if (set.shelf === 0) {
-          out.push({ at, set, dept, person: pick(STAFF), qty: pick(set.batch!), barcode: null, expiry: null });
+          out.push({ at, set, dept, person: pick(STAFF), qty: pick(set.batch!), barcode: null, expiry: null, note: null });
           continue;
         }
         // Packed 0–4 days earlier; ~1 in 300 short-shelf packs went out late.
@@ -151,30 +173,109 @@ function generate(): DemoRow[] {
           qty: 1,
           barcode: barcode++,
           expiry: packDay + (set.shelf - 1) * DAY,
+          note: null,
         });
       }
     }
   }
 
-  out.sort((a, b) => a.at - b.at);
-  return out.map((r, i) => ({ ...r, supplyNo: i + 1 }));
+  return withIds(out);
 }
 
-let cache: DemoRow[] | null = null;
-const rows = () => (cache ??= generate());
+/**
+ * Packs and resterile, from their own random stream so the สถิติจ่าย demo
+ * numbers stay exactly as they were: every barcoded pack dispensed was
+ * packed on the day its expiry implies, plus ~3% more packs that never go
+ * out and come back for resterile.
+ */
+function generatePacksAndResterile(supply: DemoEvent[]): { pack: DemoEvent[]; resterile: DemoEvent[] } {
+  const rand = prng(2570);
+  const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
+  const poisson = (lambda: number) => {
+    const limit = Math.exp(-lambda);
+    let k = 0;
+    let p = rand();
+    while (p > limit) {
+      k++;
+      p *= rand();
+    }
+    return k;
+  };
 
-function inRange(r: DemoRow, from: Date, to: Date) {
-  return r.at >= from.getTime() && r.at < to.getTime();
+  const packs: Omit<DemoEvent, "id">[] = [];
+  const back: Omit<DemoEvent, "id">[] = [];
+
+  for (const r of supply) {
+    if (r.barcode == null || r.expiry == null) continue;
+    packs.push({
+      at: r.expiry - (r.set.shelf - 1) * DAY,
+      set: r.set,
+      dept: r.dept,
+      person: pick(STAFF),
+      qty: 1,
+      barcode: r.barcode,
+      expiry: r.expiry,
+      note: sterileOf(r.set),
+    });
+  }
+
+  let barcode = 900000;
+  const first = rangeForFiscalYear(Math.min(...DEMO_FISCAL_YEARS)).from.getTime();
+  const end = rangeForFiscalYear(Math.max(...DEMO_FISCAL_YEARS)).to.getTime();
+  for (let day = first; day < end; day += DAY) {
+    const weekday = new Date(day).getUTCDay();
+    const weekend = weekday === 0 || weekday === 6 ? 0.35 : 1;
+    for (const set of SETS) {
+      if (set.shelf === 0) continue;
+      const n = poisson(set.perDay * weekend * 0.03);
+      for (let i = 0; i < n; i++) {
+        const expiry = day + (set.shelf - 1) * DAY;
+        const dept = rand() < 0.85 ? DEPARTMENTS[pick(set.home)] : pick(DEPARTMENTS);
+        const pack = { at: day, set, dept, person: pick(STAFF), qty: 1, barcode: barcode++, expiry, note: sterileOf(set) };
+        packs.push(pack);
+        // Mostly sent back a day or three after expiring; now and then
+        // earlier, for another reason.
+        const expired = rand() < 0.92;
+        const backDay = expired
+          ? expiry + (1 + Math.floor(rand() * 3)) * DAY
+          : day + (1 + Math.floor(rand() * Math.min(10, set.shelf - 1))) * DAY;
+        back.push({
+          at: backDay + (8 * 60 + Math.floor(rand() * 510)) * 60_000,
+          set,
+          dept,
+          person: pick(STAFF),
+          qty: 1,
+          barcode: pack.barcode,
+          expiry,
+          note: expired ? CAUSES[0] : pick(CAUSES.slice(1)),
+        });
+      }
+    }
+  }
+  return { pack: withIds(packs), resterile: withIds(back) };
+}
+
+let cache: Record<DbReportKind, DemoEvent[]> | null = null;
+function events(kind: DbReportKind): DemoEvent[] {
+  if (!cache) {
+    const supply = generateSupply();
+    cache = { supply, ...generatePacksAndResterile(supply) };
+  }
+  return cache[kind];
+}
+
+function inRange(e: DemoEvent, from: Date, to: Date) {
+  return e.at >= from.getTime() && e.at < to.getTime();
 }
 
 export function getDemoFiscalYears(): number[] {
   return [...DEMO_FISCAL_YEARS];
 }
 
-export function getDemoReport(fy: number): DashboardData {
+export function getDemoReport(kind: DbReportKind, fy: number): DashboardData {
   const { from, to } = rangeForFiscalYear(fy);
   const groups = new Map<string, AggregateRow>();
-  for (const r of rows()) {
+  for (const r of events(kind)) {
     if (!inRange(r, from, to)) continue;
     const d = new Date(r.at);
     const y = d.getUTCFullYear();
@@ -194,33 +295,35 @@ export function getDemoReport(fy: number): DashboardData {
         qty: r.qty,
       });
   }
-  return buildSupplyReport(fy, Array.from(groups.values()), { demo: true });
+  return buildReport(kind, fy, Array.from(groups.values()), { demo: true });
 }
 
-export function getDemoRows(q: SupplyRowsQuery): SupplyRowsPage {
+export function getDemoRecords(kind: DbReportKind, q: RecordsQuery): ReportRecordsPage {
   const { from, to } = rangeForRowsQuery(q);
   const search = q.search?.trim().toLowerCase();
   // Every demo row has a department, so the "unknown" filter matches nothing.
-  const deptOk = (r: DemoRow) =>
+  const deptOk = (r: DemoEvent) =>
     !q.department || (q.department !== UNKNOWN_DEPARTMENT && r.dept === q.department);
-  const searchOk = (r: DemoRow) =>
+  const searchOk = (r: DemoEvent) =>
     !search ||
     r.set.name.toLowerCase().includes(search) ||
     (r.barcode != null && String(r.barcode).includes(search));
-  const matches = rows()
+  const matches = events(kind)
     .filter((r) => inRange(r, from, to) && deptOk(r) && searchOk(r))
-    .sort((a, b) => b.at - a.at || b.supplyNo - a.supplyNo);
+    .sort((a, b) => b.at - a.at || b.id - a.id);
 
   const page = matches.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
-  const out: SupplyRow[] = page.map((r) => ({
-    supplyNo: r.supplyNo,
-    supplyDate: formatDateTime(new Date(r.at)),
+  const formatAt = kind === "pack" ? formatDate : formatDateTime;
+  const out: ReportRecord[] = page.map((r) => ({
+    id: r.id,
+    date: formatAt(new Date(r.at)),
     itemName: r.set.name,
     barcode: r.barcode != null ? String(r.barcode) : null,
     quantity: r.qty,
     expiryDate: r.expiry != null ? formatDate(new Date(r.expiry)) : null,
     department: r.dept,
     person: r.person,
+    note: r.note,
   }));
   return { rows: out, total: matches.length };
 }

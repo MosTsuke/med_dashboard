@@ -26,8 +26,9 @@ import ItemTable from "@/components/ItemTable";
 import ItemMonthlyDetail from "@/components/ItemMonthlyDetail";
 import SearchableSelect from "@/components/SearchableSelect";
 import DbReportLoader from "@/components/DbReportLoader";
-import SupplyRowsTable from "@/components/SupplyRowsTable";
-import { fetchSupplyReport } from "@/lib/db/clientApi";
+import ReportRecordsTable from "@/components/ReportRecordsTable";
+import { fetchReport } from "@/lib/db/clientApi";
+import { DB_REPORTS, isDbReportKind } from "@/lib/supply/reports";
 import { EXCEL_IMPORT_ENABLED } from "@/lib/features";
 import { exportReportPdf } from "@/lib/exportReportPdf";
 import {
@@ -59,7 +60,7 @@ export default function DashboardPage() {
   const [selectedItem, setSelectedItem] = useState<ItemData | null>(null);
   const [autoLoadState, setAutoLoadState] = useState<"idle" | "loading" | "error">("idle");
   const [autoLoadError, setAutoLoadError] = useState<string | null>(null);
-  /** Where สถิติจ่าย comes from on this server ("checking" until it says).
+  /** Where the database reports come from on this server ("checking" until it says).
    * With a database (or demo data) the database is the main way in and
    * Excel import is the secondary option; otherwise Excel is all there is.
    * (While EXCEL_IMPORT_ENABLED is off, the database is the only way in.) */
@@ -86,17 +87,19 @@ export default function DashboardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
 
-    // 3. `/?db=supply&fy=2568` — straight from the CSSD database.
-    if (params.get("db") === "supply") {
+    // 3. `/?db=supply&fy=2568` — straight from the CSSD database
+    //    (db = supply สถิติจ่าย, pack สถิติแพ็ค or resterile).
+    const dbReport = params.get("db");
+    if (dbReport) {
       const fy = Number(params.get("fy"));
-      if (!Number.isInteger(fy)) {
-        setAutoLoadError("ระบุปีงบประมาณใน URL เช่น ?db=supply&fy=2568");
+      if (!isDbReportKind(dbReport) || !Number.isInteger(fy)) {
+        setAutoLoadError("ระบุรายงานและปีงบประมาณใน URL เช่น ?db=supply&fy=2568 (รายงาน: supply, pack, resterile)");
         setAutoLoadState("error");
         return;
       }
       let cancelled = false;
       setAutoLoadState("loading");
-      fetchSupplyReport(fy)
+      fetchReport(dbReport, fy)
         .then((d) => {
           if (cancelled) return;
           handleDataLoaded(d);
@@ -252,6 +255,7 @@ export default function DashboardPage() {
     [departmentView, selectedMonth]
   );
   const dbFiscalYear = data?.source?.kind === "db" ? data.source.fiscalYear : null;
+  const dbReport = data?.source?.kind === "db" ? data.source.report : null;
   const dbIsMain = dbSource === "db" || dbSource === "demo" || dbFiscalYear != null;
 
   const hasItems = (viewData?.items?.length ?? 0) > 0;
@@ -298,7 +302,7 @@ export default function DashboardPage() {
     <div className="min-h-screen" style={{ background: "linear-gradient(135deg, #e8f0fe 0%, #f0f7ff 40%, #e8f5f0 100%)" }}>
       {/* Header */}
       <header className="bg-white/80 backdrop-blur border-b border-white/60 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex items-center gap-3">
             {data?.logoUrl ? (
               <img
@@ -337,7 +341,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Wraps under the title on narrow screens instead of running off the edge. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {data?.period && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
                 <CalendarDays size={12} />
@@ -349,6 +354,7 @@ export default function DashboardPage() {
             {dbFiscalYear && (
               <DbReportLoader
                 variant="compact"
+                currentReport={dbReport ?? undefined}
                 currentFiscalYear={dbFiscalYear}
                 onDataLoaded={handleDataLoaded}
                 onLoadingChange={setImporting}
@@ -531,7 +537,7 @@ export default function DashboardPage() {
                   <ListTree size={15} />
                   รายละเอียดย่อย
                 </button>
-                {dbFiscalYear && (
+                {dbFiscalYear && dbReport && (
                   <button
                     onClick={() => handleTabChange("records")}
                     className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
@@ -541,7 +547,7 @@ export default function DashboardPage() {
                     }`}
                   >
                     <ClipboardList size={15} />
-                    รายการจ่าย
+                    {DB_REPORTS[dbReport].recordsLabel}
                   </button>
                 )}
               </div>
@@ -620,8 +626,9 @@ export default function DashboardPage() {
             )}
 
             {/* ── RECORDS TAB (DB-backed reports only) ── */}
-            {tab === "records" && dbFiscalYear && (
-              <SupplyRowsTable
+            {tab === "records" && dbFiscalYear && dbReport && (
+              <ReportRecordsTable
+                report={dbReport}
                 fiscalYear={dbFiscalYear}
                 month={selectedMonth === ALL_MONTHS ? undefined : selectedMonth}
                 department={selectedDepartment === ALL_DEPARTMENTS ? undefined : selectedDepartment}

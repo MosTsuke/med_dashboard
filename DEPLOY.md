@@ -202,7 +202,7 @@ function openDashboardWithBlob(fileUrl, fileName) {
 
 ## 7. ดึงข้อมูลจากฐานข้อมูล CSSD โดยตรง (ไม่ต้องใช้ไฟล์ Excel)
 
-Dashboard ต่อ SQL Server ของโปรแกรม CSSD ได้ตรง แล้วแสดงสถิติจ่ายตามปีงบประมาณ พร้อมแท็บ "รายการจ่าย"
+Dashboard ต่อ SQL Server ของโปรแกรม CSSD ได้ตรง แล้วแสดงสถิติจ่าย สถิติแพ็ค และ Resterile ตามปีงบประมาณ พร้อมแท็บรายการของแต่ละรายงาน
 ถ้ายังไม่ได้ตั้งค่าส่วนนี้ ระบบใช้งานแบบนำเข้าไฟล์ Excel ได้ตามปกติ
 
 สิ่งที่ IT ต้องทำฝั่ง SQL Server (เปิด SQL Authentication, สร้าง login อ่านอย่างเดียว, เปิด TCP/IP) และค่าที่ต้องใส่ใน `.env.local` อยู่ใน [db/README.md](db/README.md)
@@ -212,5 +212,7 @@ Dashboard ต่อ SQL Server ของโปรแกรม CSSD ได้ต�
 ลิงก์สำหรับปุ่มในหน้า PHP:
 
 ```php
-<a href="http://<dashboard-host>:3001/?db=supply&fy=2568" target="_blank">สถิติจ่าย (ฐานข้อมูล)</a>
+<a href="http://<dashboard-host>:3001/?db=supply&fy=2568" target="_blank">สถิติจ่าย</a>
+<a href="http://<dashboard-host>:3001/?db=pack&fy=2568" target="_blank">สถิติแพ็ค</a>
+<a href="http://<dashboard-host>:3001/?db=resterile&fy=2568" target="_blank">Resterile</a>
 ```

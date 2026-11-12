@@ -67,26 +67,33 @@ export interface DashboardData {
   reportType: "summary" | "items" | "monthly" | "unknown";
   /** Where the data came from. Absent = an imported file. */
   /** `demo: true` = built-in made-up data (see lib/supply/demo.ts), not the hospital's. */
-  source?: { kind: "db"; report: "supply"; fiscalYear: number; demo?: boolean };
+  source?: { kind: "db"; report: DbReportKind; fiscalYear: number; demo?: boolean };
 }
 
-/** One dispense record for the "รายการจ่าย" table (DB-backed reports only). */
-export interface SupplyRow {
-  supplyNo: number;
-  /** Wall-clock "YYYY-MM-DD HH:mm" exactly as stored in the DB. */
-  supplyDate: string;
+/** The reports read from the CSSD database: สถิติจ่าย, สถิติแพ็ค, Resterile. */
+export type DbReportKind = "supply" | "pack" | "resterile";
+
+/** One record for a DB report's record list (รายการจ่าย / รายการแพ็ค / …). */
+export interface ReportRecord {
+  id: number;
+  /** Wall-clock "YYYY-MM-DD HH:mm" as stored, or "YYYY-MM-DD" for packs
+   * (a pack only has a date). */
+  date: string;
   itemName: string;
-  /** Pack barcode; null for consumables (dispensed without a pack). */
+  /** Pack barcode; null when there's no pack (e.g. consumables). */
   barcode: string | null;
-  /** Pieces in this dispense — 1 for a barcoded pack, can be more for consumables. */
+  /** 1 for a pack; can be more for consumables. */
   quantity: number;
-  /** Pack expiry "YYYY-MM-DD" (PackTb.SetTbExpireDate); null for consumables. */
+  /** The pack's expiry "YYYY-MM-DD"; null when there's no pack. */
   expiryDate: string | null;
   department: string;
   person: string;
+  /** Report-specific extra column: sterilization method (pack) or
+   * reason (resterile); null for สถิติจ่าย. */
+  note: string | null;
 }
 
-export interface SupplyRowsPage {
-  rows: SupplyRow[];
+export interface ReportRecordsPage {
+  rows: ReportRecord[];
   total: number;
 }

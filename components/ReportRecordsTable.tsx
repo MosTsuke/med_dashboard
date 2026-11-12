@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { Search, Loader2, AlertCircle, Info } from "lucide-react";
 import { REPORT_BANNER_BG } from "@/components/ReportNote";
 import TablePagination, { type PageSize } from "@/components/TablePagination";
-import { fetchSupplyRows } from "@/lib/db/clientApi";
+import { fetchReportRecords } from "@/lib/db/clientApi";
 import { formatMonthLabel } from "@/lib/monthlyView";
-import type { SupplyRowsPage } from "@/types";
+import { DB_REPORTS } from "@/lib/supply/reports";
+import type { DbReportKind, ReportRecordsPage } from "@/types";
 
 interface Props {
+  report: DbReportKind;
   fiscalYear: number;
   /** "2567-10"-style key, or undefined for the whole fiscal year. */
   month?: string;
@@ -30,15 +32,17 @@ function formatThaiDate(value: string): string {
 const th = "text-left px-4 py-3 text-xs font-semibold text-white uppercase tracking-wide";
 
 /**
- * "รายการจ่าย" — individual dispense records from the CSSD database, in the
- * column order the hospital team asked for. Paginated server-side (a fiscal
- * year is >100k rows), following the dashboard's month/department filters.
+ * The record list of a database report — รายการจ่าย, รายการแพ็ค or
+ * รายการ Resterile — one row per dispense / pack / pack sent back.
+ * Paginated server-side (a fiscal year is >100k rows), following the
+ * dashboard's month/department filters.
  */
-export default function SupplyRowsTable({ fiscalYear, month, department }: Props) {
+export default function ReportRecordsTable({ report, fiscalYear, month, department }: Props) {
+  const info = DB_REPORTS[report];
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [perPage, setPerPage] = useState<PageSize>(50);
-  const [result, setResult] = useState<SupplyRowsPage | null>(null);
+  const [result, setResult] = useState<ReportRecordsPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +53,7 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
 
   // Any filter change goes back to page 1 — derived in the same render, so
   // a filter change never fires a request for the old page number first.
-  const filterKey = JSON.stringify([fiscalYear, month, department, debouncedQuery, perPage]);
+  const filterKey = JSON.stringify([report, fiscalYear, month, department, debouncedQuery, perPage]);
   const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
   const page = pageState.key === filterKey ? pageState.page : 1;
   const setPage = (p: number) => setPageState({ key: filterKey, page: p });
@@ -58,14 +62,21 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchSupplyRows({ fy: fiscalYear, month, department, q: debouncedQuery || undefined, page, pageSize: perPage })
+    fetchReportRecords(report, {
+      fy: fiscalYear,
+      month,
+      department,
+      q: debouncedQuery || undefined,
+      page,
+      pageSize: perPage,
+    })
       .then((r) => !cancelled && setResult(r))
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [fiscalYear, month, department, debouncedQuery, page, perPage]);
+  }, [report, fiscalYear, month, department, debouncedQuery, page, perPage]);
 
   const scope = [
     month ? formatMonthLabel(month) : `ปีงบประมาณ ${fiscalYear}`,
@@ -73,13 +84,14 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
   ]
     .filter(Boolean)
     .join(" · ");
+  const columns = info.noteLabel ? 7 : 6;
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-md overflow-hidden">
       <div className="p-5 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
-            รายการจ่าย
+            {info.recordsLabel}
             {result && <span className="normal-case font-normal">({result.total.toLocaleString()} รายการ)</span>}
             {loading && <Loader2 size={14} className="animate-spin text-blue-500" />}
           </h2>
@@ -108,18 +120,19 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
         <table className="w-full text-sm">
           <thead>
             <tr className={`${REPORT_BANNER_BG} border-b border-blue-900/20`}>
-              <th className={`${th} w-44`}>วันที่จ่าย</th>
+              <th className={`${th} w-44`}>{info.dateLabel}</th>
               <th className={th}>ชื่อรายการ</th>
               <th className={`${th} w-20 text-right`}>จำนวน</th>
               <th className={`${th} w-40`}>วันหมดอายุ</th>
-              <th className={`${th} w-40`}>หน่วยงานที่จ่ายให้</th>
+              <th className={`${th} w-40`}>{info.departmentLabel}</th>
+              {info.noteLabel && <th className={`${th} w-40`}>{info.noteLabel}</th>}
               <th className={`${th} w-36`}>เจ้าหน้าที่</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {result?.rows.map((r) => (
-              <tr key={r.supplyNo} className="hover:bg-blue-50/30 transition-colors">
-                <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap tabular-nums">{formatThaiDate(r.supplyDate)}</td>
+              <tr key={r.id} className="hover:bg-blue-50/30 transition-colors">
+                <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap tabular-nums">{formatThaiDate(r.date)}</td>
                 <td className="px-4 py-2.5 text-gray-700">
                   <span className="font-medium">{r.itemName}</span>
                   {r.barcode && <span className="ml-2 text-xs text-gray-400 font-mono">{r.barcode}</span>}
@@ -129,8 +142,10 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
                 </td>
                 <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap tabular-nums">
                   {r.expiryDate ? (
-                    // Same-format "YYYY-MM-DD" strings compare correctly as text.
-                    r.expiryDate < r.supplyDate.slice(0, 10) ? (
+                    // Only a dispense after expiry is a problem; resterile
+                    // packs are expected to be past it. Same-format
+                    // "YYYY-MM-DD" strings compare correctly as text.
+                    report === "supply" && r.expiryDate < r.date.slice(0, 10) ? (
                       <span className="text-red-600" title="วันที่จ่ายเลยวันหมดอายุของแพ็คนี้แล้ว">
                         {formatThaiDate(r.expiryDate)}
                         <span className="ml-1.5 text-[11px] font-medium bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
@@ -141,7 +156,7 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
                       formatThaiDate(r.expiryDate)
                     )
                   ) : (
-                    <span className="text-gray-300" title="ของสิ้นเปลือง ไม่มีวันหมดอายุ">—</span>
+                    <span className="text-gray-300" title="ไม่มีห่อ จึงไม่มีวันหมดอายุ">—</span>
                   )}
                 </td>
                 <td className="px-4 py-2.5">
@@ -149,12 +164,13 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
                     {r.department}
                   </span>
                 </td>
+                {info.noteLabel && <td className="px-4 py-2.5 text-gray-600">{r.note ?? "-"}</td>}
                 <td className="px-4 py-2.5 text-gray-600">{r.person}</td>
               </tr>
             ))}
             {result && result.rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={columns} className="px-4 py-8 text-center text-gray-400">
                   ไม่พบรายการ
                 </td>
               </tr>
@@ -174,7 +190,7 @@ export default function SupplyRowsTable({ fiscalYear, month, department }: Props
 
       <p className="flex items-start gap-1.5 px-5 py-3 text-xs text-gray-400 border-t border-slate-100">
         <Info size={13} className="shrink-0 mt-px" />
-        วันหมดอายุมาจากแพ็คที่จ่าย ของสิ้นเปลือง (สำลี ผ้าก๊อซ ฯลฯ) ไม่มีบาร์โค้ดและวันหมดอายุ จึงแสดงเป็น —
+        {info.recordsNote}
       </p>
     </div>
   );

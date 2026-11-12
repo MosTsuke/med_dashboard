@@ -27,6 +27,14 @@ export function dbErrorResponse(err: unknown, context: string) {
   return NextResponse.json({ error: message }, { status: 502 });
 }
 
+/** 404 for /api/db/<report>/… with a report that doesn't exist. */
+export function unknownReportResponse() {
+  return NextResponse.json(
+    { error: "ไม่มีรายงานนี้ (มีแค่ supply, pack, resterile)" },
+    { status: 404 }
+  );
+}
+
 /** Parses a พ.ศ. fiscal year query param, or returns null if invalid. */
 export function parseFiscalYear(raw: string | null): number | null {
   if (!raw || !/^\d{4}$/.test(raw)) return null;
