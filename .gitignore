@@ -8,3 +8,6 @@ _tmp_*
 *.tsbuildinfo
 .env*.local
 db/mock/generated/
+
+# Windows install bundles built by scripts/package-windows.sh
+/dist/

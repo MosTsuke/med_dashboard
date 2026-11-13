@@ -2,3 +2,8 @@
 # them out — and put them in GitHub's "Download ZIP" — with CRLF.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+*.ps1 text eol=crlf
+deploy/windows/*.txt text eol=crlf
+deploy/windows/*.env text eol=crlf
+deploy/windows/*.sql text eol=crlf
+deploy/windows/*.example text eol=crlf
