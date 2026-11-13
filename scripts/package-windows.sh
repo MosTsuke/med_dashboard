@@ -91,6 +91,12 @@ if find "$B" \( -name '.env.local' -o -name '*.bak' -o -name '*.xlsx' -o -path '
   exit 1
 fi
 
+# Windows PowerShell 5.1 reads a .ps1 without a BOM as ANSI: keep them ASCII.
+if perl -ne 'if (/[^\x00-\x7F]/) { print "$ARGV:$.: $_"; $bad = 1 } close ARGV if eof; END { exit($bad ? 0 : 1) }' "$B"/scripts/*.ps1; then
+  echo "refusing: non-ASCII characters in a .ps1 (above)"
+  exit 1
+fi
+
 rm -f "$OUT"
 (cd "$WORK" && zip -qr -X "$OUT" med-dashboard)
 echo

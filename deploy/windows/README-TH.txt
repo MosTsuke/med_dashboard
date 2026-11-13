@@ -38,8 +38,16 @@ Med Dashboard - ชุดติดตั้งสำหรับเครื่�
 
 
 อัปเดตรุ่นใหม่
+  1. วางไฟล์ zip รุ่นใหม่ (med-dashboard-windows-....zip) ไว้ในโฟลเดอร์นี้ ไม่ต้องแตก
+  2. คลิกขวา 4-update.bat > Run as administrator แล้วรอจนขึ้นว่า "อัปเดตเรียบร้อย"
+  - สคริปต์จะหยุด dashboard ใส่รุ่นใหม่ เปิดกลับ แล้วลบไฟล์ zip ให้เอง
+  - dashboard.env (รหัสผ่าน) และโฟลเดอร์ logs ไม่ถูกแตะ
+  - ถ้าใส่รุ่นใหม่ไม่สำเร็จ จะคืนรุ่นเดิมและเปิดกลับให้เอง
+
+  ถ้าโฟลเดอร์นี้ยังไม่มี 4-update.bat (ชุดรุ่นแรก) ให้ทำเองครั้งเดียว:
   1. คลิกขวา stop-dashboard.bat > Run as administrator
-  2. แตก zip รุ่นใหม่ทับโฟลเดอร์เดิม (ไฟล์ dashboard.env เดิมจะไม่ถูกทับ)
+  2. คลิกขวาไฟล์ zip > Extract All > ปลายทางเป็นโฟลเดอร์ที่ med-dashboard อยู่ข้างใน
+     เช่น C:\ (ไม่ใช่ C:\med-dashboard) > เลือก Replace the files in the destination
   3. คลิกขวา 2-install-autostart.bat > Run as administrator
 
 ถอนการติดตั้ง

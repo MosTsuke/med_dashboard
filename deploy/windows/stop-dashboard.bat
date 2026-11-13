@@ -16,6 +16,7 @@ if errorlevel 1 (
 schtasks /end /tn "MedDashboard" >nul 2>&1
 REM Also stop our own node.exe (only the one in this folder), in case it
 REM outlived the task or was started by hand.
-powershell -NoProfile -Command "Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '%~dp0node\*' } | Stop-Process -Force"
+REM CIM rather than Get-Process: it also shows the path of the task's node.exe (runs as SYSTEM).
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '%~dp0node\*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
 echo หยุด dashboard แล้ว
 pause

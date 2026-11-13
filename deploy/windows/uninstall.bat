@@ -14,7 +14,8 @@ if errorlevel 1 (
 )
 
 schtasks /end /tn "MedDashboard" >nul 2>&1
-powershell -NoProfile -Command "Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '%~dp0node\*' } | Stop-Process -Force"
+REM CIM rather than Get-Process: it also shows the path of the task's node.exe (runs as SYSTEM).
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like '%~dp0node\*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
 schtasks /delete /tn "MedDashboard" /f >nul 2>&1 && echo - ลบการเปิดเองตอนเปิดเครื่องแล้ว || echo - ไม่มีการตั้งเปิดเองตอนเปิดเครื่อง
 netsh advfirewall firewall delete rule name="Med Dashboard" >nul 2>&1 && echo - ลบ firewall rule แล้ว || echo - ไม่มี firewall rule
 echo.

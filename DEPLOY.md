@@ -11,10 +11,12 @@
 ได้ไฟล์ `dist/med-dashboard-windows-<วันที่>-<commit>.zip` (ประมาณ 40 MB) ข้างในมี:
 - เว็บที่ build แล้ว (Next.js standalone ไม่ต้อง `npm install` ที่หน้างาน)
 - `node.exe` สำหรับ Windows 64-bit (ไม่ต้องติดตั้ง Node.js และไม่ทับ Node ที่มีอยู่)
-- สคริปต์เปิดใช้, ตั้งให้เปิดเองตอนเปิดเครื่อง (Task Scheduler), เปิด firewall, หยุด และถอนการติดตั้ง
+- สคริปต์เปิดใช้, ตั้งให้เปิดเองตอนเปิดเครื่อง (Task Scheduler), เปิด firewall, อัปเดต, หยุด และถอนการติดตั้ง
 - ไฟล์ตั้งค่า `dashboard.env.example`, ไฟล์ SQL สร้าง login อ่านอย่างเดียว และคู่มือ `README-TH.txt`
 
 ส่ง zip ไปทาง AnyDesk แล้วทำตาม `README-TH.txt` ในชุด ต้นฉบับของสคริปต์อยู่ใน [`deploy/windows/`](deploy/windows/)
+รุ่นต่อไป: วาง zip ใหม่ไว้ในโฟลเดอร์ที่ติดตั้ง (ไม่ต้องแตก) แล้วคลิกขวา `4-update.bat` > Run as administrator
+สคริปต์จะหยุด, สลับโฟลเดอร์ `app` กับ `node` เป็นรุ่นใหม่ (ถ้าพลาดคืนรุ่นเดิมให้), เปิดกลับ และลบ zip โดยไม่แตะ `dashboard.env`
 สคริปต์สร้าง zip จะไม่ยอมใส่ไฟล์ส่วนตัว (`.env.local`, `.bak`, Excel, `test/`) ลงในชุด
 
 ส่วนที่เหลือของคู่มือนี้คือการติดตั้งจากซอร์สโค้ด (ทางเดิม) และรายละเอียดเรื่อง port / IIS / PHP
