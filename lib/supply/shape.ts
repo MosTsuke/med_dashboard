@@ -54,6 +54,12 @@ export function formatDate(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
+/** Today's date on this machine's clock, as a UTC-wall-clock midnight like
+ * every other date here (the server runs on the hospital's PC, in Thai time). */
+export function wallClockToday(now = new Date()): Date {
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
 /** CE "YYYY-MM-DD" → Date at midnight (UTC wall clock), or null if it isn't
  * a real date. */
 export function parseIsoDate(s: string | null | undefined): Date | null {
@@ -210,7 +216,7 @@ export function buildReport(
   kind: DbReportKind,
   period: DbPeriod,
   rows: AggregateRow[],
-  opts: { demo?: boolean } = {}
+  opts: { demo?: boolean; today?: Date } = {}
 ): DashboardData {
   const { from, to } = periodRange(period);
   const months = bucketsInRange(from, to, period.grain);
@@ -267,11 +273,22 @@ export function buildReport(
     percentage: totalItems ? (count / totalItems) * 100 : 0,
   })).sort((a, b) => b.count - a.count);
 
-  const monthly: MonthlyPoint[] = months.map((month) => ({ month, quantity: monthTotals[month] ?? 0 }));
+  // Buckets after today haven't happened yet: leave them off the end, or a
+  // fiscal year in progress dives to 0 for every month still ahead. One
+  // that has events anyway (a mistyped future date) stays, and so does the
+  // first bucket, so a period can't come out with no buckets at all.
+  const todayKey = bucketKey(opts.today ?? wallClockToday(), period.grain);
+  let bucketCount = months.length;
+  while (bucketCount > 1 && months[bucketCount - 1] > todayKey && !monthTotals[months[bucketCount - 1]]) {
+    bucketCount--;
+  }
+  const monthly: MonthlyPoint[] = months
+    .slice(0, bucketCount)
+    .map((month) => ({ month, quantity: monthTotals[month] ?? 0 }));
 
   // The period shown is first to last bucket that actually has events, so
   // a fiscal year still in progress reads "10/2569 – 11/2569", not as if the
-  // whole year were in. (The charts still lay out every bucket.)
+  // whole year were in. (The charts lay out every bucket up to today.)
   const monthsWithData = months.filter((m) => monthTotals[m] > 0);
   const shown = monthsWithData.length
     ? { from: monthsWithData[0], to: monthsWithData[monthsWithData.length - 1] }
