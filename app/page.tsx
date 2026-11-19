@@ -16,6 +16,7 @@ import {
   ClipboardList,
   FlaskConical,
   Database,
+  GitCompareArrows,
 } from "lucide-react";
 
 import PDFUploader, { type FileUploaderHandle } from "@/components/PDFUploader";
@@ -27,6 +28,7 @@ import ItemMonthlyDetail from "@/components/ItemMonthlyDetail";
 import SearchableSelect from "@/components/SearchableSelect";
 import DbReportLoader from "@/components/DbReportLoader";
 import ReportRecordsTable from "@/components/ReportRecordsTable";
+import YearComparison from "@/components/YearComparison";
 import { fetchReport } from "@/lib/db/clientApi";
 import { DB_REPORTS, isDbReportKind } from "@/lib/supply/reports";
 import { fiscalYearPeriod, formatDate, periodLabel, periodRange, rangeForBucket } from "@/lib/supply/shape";
@@ -46,7 +48,7 @@ import {
 import type { SupplySource } from "@/lib/supply/source";
 import type { DashboardData, ItemData } from "@/types";
 
-type Tab = "dashboard" | "detail" | "subdetail" | "records";
+type Tab = "dashboard" | "detail" | "subdetail" | "records" | "compare";
 
 /** เปิดเป็น true เมื่อพร้อมใช้งาน export PDF อีกครั้ง */
 const ENABLE_PDF_EXPORT = false;
@@ -240,7 +242,8 @@ export default function DashboardPage() {
 
   const handleDataLoaded = (d: DashboardData) => {
     setData(d);
-    setTab("dashboard");
+    // Switching the report while comparing years keeps comparing.
+    setTab((t) => (t === "compare" && d.source?.kind === "db" ? "compare" : "dashboard"));
     setSelectedMonth(ALL_MONTHS);
     setSelectedDepartment(ALL_DEPARTMENTS);
     setSelectedItem(null);
@@ -525,11 +528,11 @@ export default function DashboardPage() {
                 </p>
               </div>
             )}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex gap-1 bg-white/60 backdrop-blur border border-white/80 rounded-xl p-1 w-fit shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex gap-1 bg-white/60 backdrop-blur border border-white/80 rounded-xl p-1 w-fit max-w-full overflow-x-auto shadow-sm">
                 <button
                   onClick={() => handleTabChange("dashboard")}
-                  className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
                     tab === "dashboard"
                       ? "bg-white text-blue-700 shadow-sm"
                       : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
@@ -540,7 +543,7 @@ export default function DashboardPage() {
                 </button>
                 <button
                   onClick={() => handleTabChange("detail")}
-                  className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
                     tab === "detail"
                       ? "bg-white text-blue-700 shadow-sm"
                       : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
@@ -557,7 +560,7 @@ export default function DashboardPage() {
                       ? `รายละเอียดรายเดือนของ "${selectedItem.name}"`
                       : "คลิกที่รายการในแท็บรายละเอียดก่อน เพื่อดูรายละเอียดย่อยของรายการนั้น"
                   }
-                  className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
                     !selectedItem
                       ? "text-gray-300 cursor-not-allowed"
                       : tab === "subdetail"
@@ -571,7 +574,7 @@ export default function DashboardPage() {
                 {dbPeriod && dbReport && (
                   <button
                     onClick={() => handleTabChange("records")}
-                    className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                    className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
                       tab === "records"
                         ? "bg-white text-blue-700 shadow-sm"
                         : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
@@ -581,10 +584,23 @@ export default function DashboardPage() {
                     {DB_REPORTS[dbReport].recordsLabel}
                   </button>
                 )}
+                {dbPeriod && dbReport && (
+                  <button
+                    onClick={() => handleTabChange("compare")}
+                    className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                      tab === "compare"
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                  >
+                    <GitCompareArrows size={15} />
+                    เปรียบเทียบปีงบ
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
-                {hasDepartmentFilter && tab !== "subdetail" && (
+                {hasDepartmentFilter && tab !== "subdetail" && tab !== "compare" && (
                   <SearchableSelect
                     icon={Building2}
                     value={selectedDepartment}
@@ -596,7 +612,7 @@ export default function DashboardPage() {
                     ]}
                   />
                 )}
-                {hasMonthlyData && tab !== "subdetail" && (
+                {hasMonthlyData && tab !== "subdetail" && tab !== "compare" && (
                   <SearchableSelect
                     icon={CalendarRange}
                     value={selectedMonth}
@@ -666,6 +682,9 @@ export default function DashboardPage() {
                 department={selectedDepartment === ALL_DEPARTMENTS ? undefined : selectedDepartment}
               />
             )}
+
+            {/* ── COMPARE TAB (DB-backed reports only): fiscal years side by side ── */}
+            {tab === "compare" && dbReport && <YearComparison report={dbReport} />}
 
             {/* ── SUB-DETAIL TAB ── */}
             {tab === "subdetail" && selectedItem && data?.monthly && (
