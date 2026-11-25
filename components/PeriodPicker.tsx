@@ -117,7 +117,14 @@ function shortDate(s: string): string {
  * days, this / last month, this / last fiscal year). Whether it's shown
  * รายวัน / รายเดือน / รายปี follows from its length (grainForRange).
  */
-export default function PeriodPicker({ bounds, value, onChange, disabled }: Props) {
+export default function PeriodPicker({ bounds: given, value, onChange, disabled }: Props) {
+  // A first / last date that isn't a real date is treated as unknown, so an
+  // odd value in the database can't take the page down.
+  const bounds: PeriodBounds = {
+    ...given,
+    minDate: given.minDate && parseIsoDate(given.minDate) ? given.minDate : null,
+    maxDate: given.maxDate && parseIsoDate(given.maxDate) ? given.maxDate : null,
+  };
   const anchor = anchorDate(bounds);
   const options = presets(anchor);
   const current = options.find((o) => o.from === value.from && o.to === value.to);

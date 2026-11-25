@@ -27,7 +27,8 @@ import type { DbGrain, DbReportKind } from "@/types";
  *   program's own ล้าง report. That report matches the สถิติแพ็ค rows counted
  *   by PackTb.SetTbPackDate2 instead (within about 0.5% a month): the day
  *   the set was washed, stamped on the pack it went into, usually 0–2 days
- *   before SetTbPackDate. Still to confirm with the hospital.
+ *   before SetTbPackDate. Packs from before the program kept wash dates
+ *   have SetTbPackDate2 = 0001-01-01. Still to confirm with the hospital.
  *
  *  Resterile — DemandTb rows with Resterile > 0: a pack sent back to be
  *   processed again. Resterile is the reason code (→ ReCauseTb), DemandDate
@@ -131,10 +132,13 @@ WHERE ${range}
 GROUP BY ${spec.setId}, ${ITEM_NAME_EXPR}, d.DepartTbName, ${bucket}`;
   };
   return {
+    // Placeholder dates are left out: packs made before the CSSD program
+    // recorded wash dates carry SetTbPackDate2 = 0001-01-01, and 1900-01-01
+    // is SQL Server's other usual "no date".
     dateRange: `
 SELECT MIN(${spec.dateRangeDate}) AS minDate, MAX(${spec.dateRangeDate}) AS maxDate
 ${spec.dateRangeFrom}
-WHERE ${spec.dateRangeWhere} AND ${spec.dateRangeDate} IS NOT NULL`,
+WHERE ${spec.dateRangeWhere} AND ${spec.dateRangeDate} > '19000101'`,
     aggregate: { day: aggregate("day"), month: aggregate("month"), year: aggregate("year") },
     rowsCount: `
 SELECT COUNT(*) AS total

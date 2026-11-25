@@ -49,9 +49,10 @@ const pad = (n: number) => String(n).padStart(2, "0");
 export function formatDateTime(d: Date): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
-/** Date → CE "YYYY-MM-DD". */
+/** Date → CE "YYYY-MM-DD" (always four year digits, even for a
+ * placeholder like 0001-01-01). */
 export function formatDate(d: Date): string {
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  return `${String(d.getUTCFullYear()).padStart(4, "0")}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
 /** Today's date on this machine's clock, as a UTC-wall-clock midnight like
