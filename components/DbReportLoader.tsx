@@ -170,7 +170,7 @@ export default function DbReportLoader({
       )}
 
       <p className="text-xs font-medium text-gray-500 mb-2">รายงาน</p>
-      <div role="radiogroup" aria-label="รายงาน" className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-xl mb-4">
+      <div role="radiogroup" aria-label="รายงาน" className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-gray-100 rounded-xl mb-4">
         {DB_REPORT_KINDS.map((k) => (
           <button
             key={k}

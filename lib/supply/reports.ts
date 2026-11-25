@@ -39,6 +39,16 @@ export const DB_REPORTS: Record<DbReportKind, DbReportInfo> = {
     emptyText: "ยังไม่พบข้อมูลการแพ็คในฐานข้อมูล",
     recordsNote: "นับเฉพาะห่อที่ยังใช้งานอยู่ ห่อที่ถูกยกเลิกในโปรแกรม CSSD ไม่นับ · เจ้าหน้าที่คือผู้แพ็ค",
   },
+  wash: {
+    label: "สถิติล้าง",
+    recordsLabel: "รายการล้าง",
+    dateLabel: "วันที่ล้าง",
+    departmentLabel: "หน่วยงานเจ้าของเซต",
+    noteLabel: "วิธีฆ่าเชื้อ",
+    emptyText: "ยังไม่พบข้อมูลการล้างในฐานข้อมูล",
+    recordsNote:
+      "นับเซตที่ล้างแล้วแพ็คเป็นห่อ ตามวันที่ล้างที่โปรแกรม CSSD บันทึกไว้ในห่อ (มักก่อนวันแพ็ค 0–2 วัน) · เจ้าหน้าที่คือผู้แพ็ค",
+  },
   resterile: {
     label: "Resterile",
     recordsLabel: "รายการ Resterile",

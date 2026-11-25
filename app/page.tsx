@@ -91,7 +91,7 @@ export default function DashboardPage() {
     const params = new URLSearchParams(window.location.search);
 
     // 3. `/?db=supply&fy=2568` — straight from the CSSD database
-    //    (db = supply สถิติจ่าย, pack สถิติแพ็ค or resterile), for a fiscal
+    //    (db = supply สถิติจ่าย, pack สถิติแพ็ค, wash สถิติล้าง or resterile), for a fiscal
     //    year month by month, or any range:
     //    `/?db=supply&from=2025-10-01&to=2025-10-31&grain=day` (day|month|year).
     const dbReport = params.get("db");
@@ -109,7 +109,7 @@ export default function DashboardPage() {
             : null;
       if (!isDbReportKind(dbReport) || !period) {
         setAutoLoadError(
-          "ระบุรายงานและช่วงเวลาใน URL เช่น ?db=supply&fy=2568 หรือ ?db=supply&from=2025-10-01&to=2025-10-31&grain=day (รายงาน: supply, pack, resterile)"
+          "ระบุรายงานและช่วงเวลาใน URL เช่น ?db=supply&fy=2568 หรือ ?db=supply&from=2025-10-01&to=2025-10-31&grain=day (รายงาน: supply, pack, wash, resterile)"
         );
         setAutoLoadState("error");
         return;

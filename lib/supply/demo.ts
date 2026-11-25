@@ -95,7 +95,7 @@ const sterileOf = (set: DemoSet) => STERILE[set.id] ?? "STEAM AUTOCLAVE";
 /** Resterile reasons; the first (expired) is by far the most common. */
 const CAUSES = ["หมดอายุ", "ความสะอาด", "เครื่องมือไม่ถูกต้อง", "หีบห่อมีปัญหา"];
 
-/** One dispense, pack or resterile pack. */
+/** One dispense, pack, wash or resterile pack. */
 interface DemoEvent {
   id: number;
   /** Wall-clock time as a UTC timestamp (same convention as the DB code);
@@ -107,7 +107,7 @@ interface DemoEvent {
   qty: number;
   barcode: number | null;
   expiry: number | null;
-  /** Sterilization method (pack) or reason (resterile). */
+  /** Sterilization method (pack, wash) or reason (resterile). */
   note: string | null;
 }
 
@@ -258,11 +258,28 @@ function generatePacksAndResterile(supply: DemoEvent[]): { pack: DemoEvent[]; re
   return { pack: withIds(packs), resterile: withIds(back) };
 }
 
+/**
+ * สถิติล้าง: each pack's set was washed 0–2 days before it was packed,
+ * mostly the day before, as in the hospital's data. Worked out from the
+ * barcode rather than drawn from a random stream, so no other demo number
+ * moves.
+ */
+function washesOf(packs: DemoEvent[]): DemoEvent[] {
+  return withIds(
+    packs.map((p) => {
+      const k = (p.barcode ?? 0) % 10;
+      const daysBefore = k < 5 ? 1 : k < 8 ? 0 : 2;
+      return { ...p, at: p.at - daysBefore * DAY };
+    })
+  );
+}
+
 let cache: Record<DbReportKind, DemoEvent[]> | null = null;
 function events(kind: DbReportKind): DemoEvent[] {
   if (!cache) {
     const supply = generateSupply();
-    cache = { supply, ...generatePacksAndResterile(supply) };
+    const { pack, resterile } = generatePacksAndResterile(supply);
+    cache = { supply, pack, wash: washesOf(pack), resterile };
   }
   return cache[kind];
 }
@@ -322,7 +339,7 @@ export function getDemoRecords(kind: DbReportKind, q: RecordsQuery): ReportRecor
     .sort((a, b) => b.at - a.at || b.id - a.id);
 
   const page = matches.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
-  const formatAt = kind === "pack" ? formatDate : formatDateTime;
+  const formatAt = kind === "pack" || kind === "wash" ? formatDate : formatDateTime;
   const out: ReportRecord[] = page.map((r) => ({
     id: r.id,
     date: formatAt(new Date(r.at)),

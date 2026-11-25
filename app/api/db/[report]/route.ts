@@ -10,7 +10,7 @@ export const runtime = "nodejs";
  * GET /api/db/<report>?from=2025-10-01&to=2025-10-31&grain=day → DashboardData
  * for that period, bucketed per day / month / fiscal year; ?fy=2568 still
  * means that whole fiscal year, month by month. <report> is supply
- * (สถิติจ่าย), pack (สถิติแพ็ค) or resterile.
+ * (สถิติจ่าย), pack (สถิติแพ็ค), wash (สถิติล้าง) or resterile.
  */
 export async function GET(req: NextRequest, { params }: { params: { report: string } }) {
   if (!isDbReportKind(params.report)) return unknownReportResponse();

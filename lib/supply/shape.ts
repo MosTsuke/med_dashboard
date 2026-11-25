@@ -203,6 +203,7 @@ export interface RecordsQuery {
 const QUANTITY_UNIT: Record<DbReportKind, string> = {
   supply: "ชิ้น",
   pack: "ห่อ",
+  wash: "เซต",
   resterile: "ห่อ",
 };
 

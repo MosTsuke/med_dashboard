@@ -39,7 +39,7 @@ export async function getDbReport(kind: DbReportKind, period: DbPeriod): Promise
 
 interface RawRecord {
   id: number;
-  /** DATETIME for dispenses and resterile; DATE for packs. */
+  /** DATETIME for dispenses and resterile; DATE for packs and washes. */
   at: Date;
   setId: number | null;
   setName: string | null;
@@ -77,8 +77,8 @@ export async function getDbRecords(kind: DbReportKind, q: RecordsQuery): Promise
       .query<RawRecord>(REPORT_SQL[kind].rows),
   ]);
 
-  // A pack only has a date; dispenses and resterile have a time too.
-  const formatAt = kind === "pack" ? formatDate : formatDateTime;
+  // Packs and washes only have a date; dispenses and resterile have a time too.
+  const formatAt = kind === "pack" || kind === "wash" ? formatDate : formatDateTime;
   const rows: ReportRecord[] = rowsResult.recordset.map((r) => ({
     id: r.id,
     date: formatAt(r.at),

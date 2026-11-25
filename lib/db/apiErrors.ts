@@ -32,7 +32,7 @@ export function dbErrorResponse(err: unknown, context: string) {
 /** 404 for /api/db/<report>/… with a report that doesn't exist. */
 export function unknownReportResponse() {
   return NextResponse.json(
-    { error: "ไม่มีรายงานนี้ (มีแค่ supply, pack, resterile)" },
+    { error: "ไม่มีรายงานนี้ (มีแค่ supply, pack, wash, resterile)" },
     { status: 404 }
   );
 }

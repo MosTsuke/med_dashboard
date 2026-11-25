@@ -70,8 +70,8 @@ export interface DashboardData {
   source?: { kind: "db"; report: DbReportKind; period: DbPeriod; demo?: boolean };
 }
 
-/** The reports read from the CSSD database: สถิติจ่าย, สถิติแพ็ค, Resterile. */
-export type DbReportKind = "supply" | "pack" | "resterile";
+/** The reports read from the CSSD database: สถิติจ่าย, สถิติแพ็ค, สถิติล้าง, Resterile. */
+export type DbReportKind = "supply" | "pack" | "wash" | "resterile";
 
 /** How a DB report is bucketed over time: per day, per month or per
  * fiscal year (ปีงบประมาณ). For DB reports `monthly` / `monthlyQuantity`
@@ -100,7 +100,7 @@ export interface ReportRecord {
   expiryDate: string | null;
   department: string;
   person: string;
-  /** Report-specific extra column: sterilization method (pack) or
+  /** Report-specific extra column: sterilization method (pack, wash) or
    * reason (resterile); null for สถิติจ่าย. */
   note: string | null;
 }

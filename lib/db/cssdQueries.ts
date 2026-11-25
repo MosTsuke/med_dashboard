@@ -22,6 +22,13 @@ import type { DbGrain, DbReportKind } from "@/types";
  *   Counted: PackTbActive = 1 only. Inactive packs (~3.5%) are mostly never
  *   dispensed — cancelled packs, it seems; still to confirm with the hospital.
  *
+ *  สถิติล้าง — no table records washing as such: DemandTb / DemandSetTb
+ *   hold what departments send back, and run a few percent above the CSSD
+ *   program's own ล้าง report. That report matches the สถิติแพ็ค rows counted
+ *   by PackTb.SetTbPackDate2 instead (within about 0.5% a month): the day
+ *   the set was washed, stamped on the pack it went into, usually 0–2 days
+ *   before SetTbPackDate. Still to confirm with the hospital.
+ *
  *  Resterile — DemandTb rows with Resterile > 0: a pack sent back to be
  *   processed again. Resterile is the reason code (→ ReCauseTb), DemandDate
  *   the date, DepartTbId the department that sent it back, DemandRequest
@@ -154,6 +161,24 @@ OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`,
   };
 }
 
+/** Active packs (PackTb) — สถิติแพ็ค and สถิติล้าง, which differ only in
+ * the date they go by. */
+const PACKS = {
+  from: `
+FROM dbo.PackTb p ${NOLOCK}
+LEFT JOIN dbo.SetTb     st ${NOLOCK} ON st.SetTbId     = p.SetTbId
+LEFT JOIN dbo.DepartTb  d  ${NOLOCK} ON d.DepartTbId   = p.SetTbDepart
+LEFT JOIN dbo.SterileTb sr ${NOLOCK} ON sr.SterileTbId = p.SetTbSterileType
+LEFT JOIN dbo.PersonTb  pe ${NOLOCK} ON pe.PersonTbId  = p.SetTbPerson1`,
+  where: "p.PackTbNo <> 0 AND p.PackTbActive = 1",
+  setId: "p.SetTbId",
+  qty: "1",
+  id: "p.PackTbNo",
+  note: `COALESCE(NULLIF(LTRIM(RTRIM(sr.SterileTbName2)), ''), sr.SterileTbName)`,
+  dateRangeFrom: `FROM dbo.PackTb ${NOLOCK}`,
+  dateRangeWhere: "PackTbNo <> 0 AND PackTbActive = 1",
+};
+
 export const REPORT_SQL: Record<DbReportKind, ReportSql> = {
   // สถิติจ่าย — `s` = SupplyTb. PackTbNo 0 is the consumables placeholder
   // pack, so it's never joined. SupplyNo 0 is a placeholder row.
@@ -176,23 +201,10 @@ LEFT JOIN dbo.PersonTb pe ${NOLOCK} ON pe.PersonTbId = s.PersonTbId`,
   }),
 
   // สถิติแพ็ค — `p` = PackTb itself; PackTbNo 0 is the placeholder pack.
-  pack: reportSql({
-    from: `
-FROM dbo.PackTb p ${NOLOCK}
-LEFT JOIN dbo.SetTb     st ${NOLOCK} ON st.SetTbId     = p.SetTbId
-LEFT JOIN dbo.DepartTb  d  ${NOLOCK} ON d.DepartTbId   = p.SetTbDepart
-LEFT JOIN dbo.SterileTb sr ${NOLOCK} ON sr.SterileTbId = p.SetTbSterileType
-LEFT JOIN dbo.PersonTb  pe ${NOLOCK} ON pe.PersonTbId  = p.SetTbPerson1`,
-    where: "p.PackTbNo <> 0 AND p.PackTbActive = 1",
-    date: "p.SetTbPackDate",
-    setId: "p.SetTbId",
-    qty: "1",
-    id: "p.PackTbNo",
-    note: `COALESCE(NULLIF(LTRIM(RTRIM(sr.SterileTbName2)), ''), sr.SterileTbName)`,
-    dateRangeFrom: `FROM dbo.PackTb ${NOLOCK}`,
-    dateRangeWhere: "PackTbNo <> 0 AND PackTbActive = 1",
-    dateRangeDate: "SetTbPackDate",
-  }),
+  pack: reportSql({ ...PACKS, date: "p.SetTbPackDate", dateRangeDate: "SetTbPackDate" }),
+
+  // สถิติล้าง — the same packs, on the day their set was washed.
+  wash: reportSql({ ...PACKS, date: "p.SetTbPackDate2", dateRangeDate: "SetTbPackDate2" }),
 
   // Resterile — `dm` = DemandTb rows with a resterile reason.
   resterile: reportSql({
