@@ -20,6 +20,7 @@
      - PackTb (สถิติแพ็ค): ห่อที่แพ็คในช่วงนั้น
        รวมห่อที่ถูกจ่ายหรือส่งกลับมา resterile ในช่วงนั้นด้วย
      - DemandTb (resterile และการเบิก/คืน)
+     - DemandSetTb (ยอดเบิก/รับคืนรายเซตต่อวัน ใช้หาที่มาของสถิติล้าง)
      - ตารางอ้างอิงทั้งตาราง: DayCountTb, SetTb, SetTypeTb, ReCauseTb (สาเหตุ resterile),
        SterileTb (วิธีฆ่าเชื้อ), MachineTb (เครื่อง), RoundTb (รอบ),
        DepartTb (ไม่รวมรหัสผ่าน), PersonTb (เฉพาะรหัส + ชื่อที่ปิดแล้ว)
@@ -58,6 +59,9 @@ BEGIN TRY
   INSERT @tables (name, kind, datecol) VALUES
     (N'SupplyTb',   'dated',  N'SupplyDate'),
     (N'DemandTb',   'dated',  N'DemandDate'),
+    -- Per set, department and day: requested / returned counts. The team
+    -- says washing is recorded here too (for สถิติล้าง).
+    (N'DemandSetTb', 'dated', N'DemandSetDate'),
     (N'PackTb',     'packs',  NULL),
     (N'DepartTb',   'all',    NULL),
     (N'DayCountTb', 'all',    NULL),
@@ -78,6 +82,12 @@ BEGIN TRY
 
     IF OBJECT_ID(N'CSSD.dbo.' + QUOTENAME(@name), N'U') IS NULL
       PRINT N'- ข้าม ' + @name + N' (ไม่มีตารางนี้)';
+    -- Another version of the CSSD program may lack the date column: skip
+    -- that table rather than fail the whole export.
+    ELSE IF @kind = 'dated' AND NOT EXISTS (
+      SELECT 1 FROM CSSD.sys.columns
+      WHERE object_id = OBJECT_ID(N'CSSD.dbo.' + QUOTENAME(@name)) AND name = @datecol)
+      PRINT N'- ข้าม ' + @name + N' (ไม่มีคอลัมน์ ' + @datecol + N')';
     ELSE
     BEGIN
       -- Every column except anything password-like (e.g. DepartTb.DepartTbPassword).
