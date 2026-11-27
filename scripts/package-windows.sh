@@ -39,7 +39,8 @@ echo "2/5  installing packages (npm ci)"
 (cd "$WORK/src" && npm ci --no-audit --no-fund --loglevel=error >/dev/null)
 
 echo "3/5  building (standalone)"
-if ! (cd "$WORK/src" && STANDALONE=1 NEXT_TELEMETRY_DISABLED=1 npx next build >"$WORK/build.log" 2>&1); then
+# The offline viewer (public/offline-viewer.html, for "ส่งออก HTML") first.
+if ! (cd "$WORK/src" && node scripts/build-offline-viewer.mjs && STANDALONE=1 NEXT_TELEMETRY_DISABLED=1 npx next build) >"$WORK/build.log" 2>&1; then
   tail -40 "$WORK/build.log"
   exit 1
 fi

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { ChevronDown, Check, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -35,7 +35,10 @@ export default function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Panel's left edge relative to the trigger's, in px. */
+  const [panelLeft, setPanelLeft] = useState(0);
 
   const selected = options.find((o) => o.value === value);
 
@@ -71,6 +74,31 @@ export default function SearchableSelect({
     if (open) requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
 
+  // The panel opens under the trigger toward whichever side has room inside
+  // the page's content (or the window): left-aligned with the trigger,
+  // else right-aligned, else against the content's left edge. Measured
+  // before paint, so it never shows in the wrong place first.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const root = rootRef.current;
+      const panel = panelRef.current;
+      if (!root || !panel) return;
+      const r = root.getBoundingClientRect();
+      const w = panel.offsetWidth;
+      const box = root.closest("main")?.getBoundingClientRect();
+      const viewport = document.documentElement.clientWidth;
+      const minX = Math.max(box?.left ?? 0, 8);
+      const maxX = Math.min(box?.right ?? viewport, viewport - 8);
+      if (r.left + w <= maxX) setPanelLeft(0);
+      else if (r.right - w >= minX) setPanelLeft(r.width - w);
+      else setPanelLeft(minX - r.left);
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open]);
+
   return (
     <div ref={rootRef} className={`relative ${className}`}>
       <button
@@ -88,7 +116,9 @@ export default function SearchableSelect({
 
       {open && (
         <div
-          className={`absolute right-0 mt-1.5 ${widthClass} bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden`}
+          ref={panelRef}
+          style={{ left: panelLeft }}
+          className={`absolute mt-1.5 ${widthClass} max-w-[calc(100vw-1rem)] bg-white border border-gray-200 rounded-xl shadow-lg z-30 overflow-hidden`}
         >
           <div className="p-2 border-b border-gray-100">
             <div className="relative">

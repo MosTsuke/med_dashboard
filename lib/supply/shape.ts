@@ -55,10 +55,20 @@ export function formatDate(d: Date): string {
   return `${String(d.getUTCFullYear()).padStart(4, "0")}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
+let fixedToday: Date | null = null;
+
+/** An exported HTML file shows its data as it was on the day it was
+ * exported: that day stands in for "today" everywhere in the file. */
+export function fixWallClockToday(day: Date | null) {
+  fixedToday = day;
+}
+
 /** Today's date on this machine's clock, as a UTC-wall-clock midnight like
  * every other date here (the server runs on the hospital's PC, in Thai time). */
-export function wallClockToday(now = new Date()): Date {
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+export function wallClockToday(now?: Date): Date {
+  if (!now && fixedToday) return fixedToday;
+  const d = now ?? new Date();
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
 /** CE "YYYY-MM-DD" → Date at midnight (UTC wall clock), or null if it isn't
@@ -200,12 +210,13 @@ export interface RecordsQuery {
   pageSize: number;
 }
 
-/** Unit of one counted event, for the "จำนวนรวม" stat. */
+/** Unit of one counted event, for the "จำนวนรวม" stat. Packs and
+ * Resterile are plain counts with no unit (the hospital's choice). */
 const QUANTITY_UNIT: Record<DbReportKind, string> = {
   supply: "ชิ้น",
-  pack: "ห่อ",
+  pack: "",
   wash: "เซต",
-  resterile: "ห่อ",
+  resterile: "",
 };
 
 /**

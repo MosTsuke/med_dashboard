@@ -152,7 +152,7 @@ export default function ReportRecordsTable({ report, from, to, scope: scopeLabel
                       formatThaiDate(r.expiryDate)
                     )
                   ) : (
-                    <span className="text-gray-300" title="ไม่มีห่อ จึงไม่มีวันหมดอายุ">—</span>
+                    <span className="text-gray-300" title="ของสิ้นเปลือง ไม่มีวันหมดอายุ">—</span>
                   )}
                 </td>
                 <td className="px-4 py-2.5">

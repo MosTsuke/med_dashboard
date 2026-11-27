@@ -17,6 +17,9 @@ import {
   FlaskConical,
   Database,
   GitCompareArrows,
+  Layers,
+  CalendarClock,
+  FileDown,
 } from "lucide-react";
 
 import PDFUploader, { type FileUploaderHandle } from "@/components/PDFUploader";
@@ -29,7 +32,14 @@ import SearchableSelect from "@/components/SearchableSelect";
 import DbReportLoader from "@/components/DbReportLoader";
 import ReportRecordsTable from "@/components/ReportRecordsTable";
 import YearComparison from "@/components/YearComparison";
-import { fetchReport } from "@/lib/db/clientApi";
+import AllReportsView from "@/components/AllReportsView";
+import ExtraReportsLink from "@/components/ExtraReportsLink";
+import ExpiryView from "@/components/ExpiryView";
+import ExportHtmlButton from "@/components/ExportHtmlButton";
+import { offlineFile } from "@/lib/offline/source";
+import { fetchBranding, fetchReport } from "@/lib/db/clientApi";
+import { BrandingEditButton } from "@/components/BrandingDialog";
+import { DEFAULT_TITLE, type BrandingInfo } from "@/lib/brandingTypes";
 import { DB_REPORTS, isDbReportKind } from "@/lib/supply/reports";
 import { fiscalYearPeriod, formatDate, periodLabel, periodRange, rangeForBucket } from "@/lib/supply/shape";
 import { EXCEL_IMPORT_ENABLED } from "@/lib/features";
@@ -39,6 +49,7 @@ import {
   sliceByDepartment,
   formatMonthLabel,
   formatPeriodValue,
+  formatThaiIsoDate,
   ALL_MONTHS,
   ALL_DEPARTMENTS,
   type MonthFilter,
@@ -48,7 +59,11 @@ import {
 import type { SupplySource } from "@/lib/supply/source";
 import type { DashboardData, ItemData } from "@/types";
 
-type Tab = "dashboard" | "detail" | "subdetail" | "records" | "compare";
+type Tab = "dashboard" | "detail" | "subdetail" | "records" | "compare" | "all" | "expiry";
+
+/** Tabs that carry their own controls: the page's department/month filters
+ * are hidden there, and they stay open when the report or period changes. */
+const SELF_CONTAINED_TABS: Tab[] = ["compare", "all", "expiry"];
 
 /** เปิดเป็น true เมื่อพร้อมใช้งาน export PDF อีกครั้ง */
 const ENABLE_PDF_EXPORT = false;
@@ -68,6 +83,19 @@ export default function DashboardPage() {
    * Excel import is the secondary option; otherwise Excel is all there is.
    * (While EXCEL_IMPORT_ENABLED is off, the database is the only way in.) */
   const [dbSource, setDbSource] = useState<SupplySource | "checking">("checking");
+  /** The hospital's name and logo (set from the pencil beside the title). */
+  const [branding, setBranding] = useState<BrandingInfo | null>(null);
+  const title = branding?.hospitalName ?? DEFAULT_TITLE;
+  const logoUrl = branding?.logoUrl ?? data?.logoUrl;
+
+  useEffect(() => {
+    fetchBranding()
+      .then(setBranding)
+      .catch(() => setBranding({ hospitalName: null, logoUrl: null, editable: false }));
+  }, []);
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
   const reportRef = useRef<HTMLDivElement>(null);
   const uploaderRef = useRef<FileUploaderHandle>(null);
 
@@ -88,7 +116,11 @@ export default function DashboardPage() {
    *    snippet.
    */
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    // An exported HTML file opens on the report and period it was exported with.
+    const file = offlineFile();
+    const params = file
+      ? new URLSearchParams({ db: file.start.report, ...file.start.period })
+      : new URLSearchParams(window.location.search);
 
     // 3. `/?db=supply&fy=2568` — straight from the CSSD database
     //    (db = supply สถิติจ่าย, pack สถิติแพ็ค, wash สถิติล้าง or resterile), for a fiscal
@@ -242,8 +274,9 @@ export default function DashboardPage() {
 
   const handleDataLoaded = (d: DashboardData) => {
     setData(d);
-    // Switching the report while comparing years keeps comparing.
-    setTab((t) => (t === "compare" && d.source?.kind === "db" ? "compare" : "dashboard"));
+    // Switching the report or period while comparing years, or with all
+    // the reports together, stays on that tab.
+    setTab((t) => (SELF_CONTAINED_TABS.includes(t) && d.source?.kind === "db" ? t : "dashboard"));
     setSelectedMonth(ALL_MONTHS);
     setSelectedDepartment(ALL_DEPARTMENTS);
     setSelectedItem(null);
@@ -338,9 +371,9 @@ export default function DashboardPage() {
       <header className="bg-white/80 backdrop-blur border-b border-white/60 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex items-center gap-3">
-            {data?.logoUrl ? (
+            {logoUrl ? (
               <img
-                src={data.logoUrl}
+                src={logoUrl}
                 alt="logo"
                 className="w-9 h-9 rounded-xl object-contain border border-gray-100 shadow-sm bg-white"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -351,8 +384,11 @@ export default function DashboardPage() {
               </div>
             )}
             <div>
-              <h1 className="text-sm font-bold text-gray-800 leading-tight">
-                Med Dashboard
+              <h1 className="flex items-center gap-1 text-sm font-bold text-gray-800 leading-tight">
+                {title}
+                {branding && (
+                  <BrandingEditButton branding={branding} onSaved={setBranding} disabled={offlineFile() != null} />
+                )}
               </h1>
               <p className="text-xs text-gray-500 leading-snug max-w-md sm:max-w-lg">
                 {data ? (
@@ -377,6 +413,13 @@ export default function DashboardPage() {
 
           {/* Wraps under the title on narrow screens instead of running off the edge. */}
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {/* The hospital's other reports (port 81 of this machine) — only
+                where the dashboard runs on the hospital's own database, not
+                on the demo site. */}
+            {(dbSource === "db" || dbSource === "demo") && (
+              <ExportHtmlButton currentReport={dbReport} currentPeriod={dbPeriod} />
+            )}
+            {dbSource === "db" && <ExtraReportsLink />}
             {data?.period && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
                 <CalendarDays size={12} />
@@ -428,6 +471,18 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-5">
+        {/* An exported HTML file says what it holds and that it doesn't update. */}
+        {offlineFile() && (
+          <div className="flex items-start gap-2 text-sm text-sky-900 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+            <FileDown size={16} className="shrink-0 mt-0.5" />
+            <p>
+              <span className="font-semibold">ไฟล์ข้อมูลที่ส่งออกจาก Med Dashboard</span> — มีข้อมูล{" "}
+              {formatThaiIsoDate(offlineFile()!.from)} – {formatThaiIsoDate(offlineFile()!.to)} · ส่งออกเมื่อ{" "}
+              {formatThaiIsoDate(offlineFile()!.exportedAt.slice(0, 10))} {offlineFile()!.exportedAt.slice(11)} น.
+              · เปิดดูได้โดยไม่ต้องต่อฐานข้อมูล ตัวเลขเป็นของ ณ วันที่ส่งออก ไม่อัปเดตเอง
+            </p>
+          </div>
+        )}
 
         {/* ตัวเลือกไฟล์ซ่อน — ใช้เมื่อมีข้อมูลแล้ว (กดปุ่ม header) */}
         {data && EXCEL_IMPORT_ENABLED && (
@@ -529,7 +584,7 @@ export default function DashboardPage() {
               </div>
             )}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex gap-1 bg-white/60 backdrop-blur border border-white/80 rounded-xl p-1 w-fit max-w-full overflow-x-auto shadow-sm">
+              <div className="flex flex-wrap gap-1 bg-white/60 backdrop-blur border border-white/80 rounded-xl p-1 w-fit max-w-full shadow-sm">
                 <button
                   onClick={() => handleTabChange("dashboard")}
                   className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
@@ -597,10 +652,36 @@ export default function DashboardPage() {
                     เปรียบเทียบปีงบ
                   </button>
                 )}
+                {dbPeriod && dbReport && (
+                  <button
+                    onClick={() => handleTabChange("all")}
+                    className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                      tab === "all"
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                  >
+                    <Layers size={15} />
+                    รวมทุกสถิติ
+                  </button>
+                )}
+                {dbPeriod && dbReport && (
+                  <button
+                    onClick={() => handleTabChange("expiry")}
+                    className={`flex shrink-0 items-center gap-2 whitespace-nowrap text-sm font-medium px-4 py-2 rounded-lg transition-all ${
+                      tab === "expiry"
+                        ? "bg-white text-blue-700 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/50"
+                    }`}
+                  >
+                    <CalendarClock size={15} />
+                    หมดอายุ/ใกล้หมดอายุ
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
-                {hasDepartmentFilter && tab !== "subdetail" && tab !== "compare" && (
+                {hasDepartmentFilter && tab !== "subdetail" && !SELF_CONTAINED_TABS.includes(tab) && (
                   <SearchableSelect
                     icon={Building2}
                     value={selectedDepartment}
@@ -612,7 +693,7 @@ export default function DashboardPage() {
                     ]}
                   />
                 )}
-                {hasMonthlyData && tab !== "subdetail" && tab !== "compare" && (
+                {hasMonthlyData && tab !== "subdetail" && !SELF_CONTAINED_TABS.includes(tab) && (
                   <SearchableSelect
                     icon={CalendarRange}
                     value={selectedMonth}
@@ -686,6 +767,12 @@ export default function DashboardPage() {
             {/* ── COMPARE TAB (DB-backed reports only): fiscal years side by side ── */}
             {tab === "compare" && dbReport && <YearComparison report={dbReport} />}
 
+            {/* ── ALL REPORTS TAB (DB-backed reports only): the four reports together ── */}
+            {tab === "all" && dbPeriod && <AllReportsView period={dbPeriod} current={data} />}
+
+            {/* ── EXPIRY TAB: packs expired or about to (mockup data for now) ── */}
+            {tab === "expiry" && <ExpiryView />}
+
             {/* ── SUB-DETAIL TAB ── */}
             {tab === "subdetail" && selectedItem && data?.monthly && (
               <ItemMonthlyDetail
@@ -704,7 +791,8 @@ export default function DashboardPage() {
       </main>
 
       <footer className="text-center py-6 text-xs text-gray-400">
-        Med Dashboard{data?.hospitalName ? ` · ${data.hospitalName}` : ""}{data?.fiscalYear ? ` · ปีงบประมาณ ${data.fiscalYear}` : ""}
+        Med Dashboard{branding?.hospitalName ? ` · ${branding.hospitalName}` : data?.hospitalName ? ` · ${data.hospitalName}` : ""}
+        {data?.fiscalYear ? ` · ปีงบประมาณ ${data.fiscalYear}` : ""}
       </footer>
     </div>
   );

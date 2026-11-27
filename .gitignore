@@ -11,3 +11,10 @@ db/mock/generated/
 
 # Windows install bundles built by scripts/package-windows.sh
 /dist/
+
+# Built by scripts/build-offline-viewer.mjs (npm run build)
+/public/offline-viewer.html
+/.offline-build/
+
+# Hospital name and logo saved from the page (lib/branding.ts) during development
+/.branding/

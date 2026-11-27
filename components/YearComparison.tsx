@@ -26,7 +26,7 @@ import {
 } from "recharts";
 import ReportSectionHeader from "@/components/ReportSectionHeader";
 import { fetchReport, fetchReportYears, type ReportDataRange } from "@/lib/db/clientApi";
-import { formatNumber } from "@/lib/formatNumber";
+import { formatNumber, withUnit } from "@/lib/formatNumber";
 import { formatThaiIsoDate } from "@/lib/monthlyView";
 import { DB_REPORTS } from "@/lib/supply/reports";
 import { fiscalYearPeriod } from "@/lib/supply/shape";
@@ -526,7 +526,7 @@ function MonthlyOverlay({
     };
 
   return (
-    <ChartCard title={`จำนวนรายเดือน เทียบแต่ละปี (${unit})`} icon={TrendingUp}>
+    <ChartCard title={withUnit("จำนวนรายเดือน เทียบแต่ละปี", unit)} icon={TrendingUp}>
       <ResponsiveContainer width="100%" height={320}>
         <LineChart data={data} margin={{ top: 10, right: 44, left: 4, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
@@ -609,7 +609,7 @@ function TopDepartments({ figures, unit, colorOf }: { figures: YearFigures[]; un
   const barSize = figures.length === 3 ? 7 : 9;
   const height = Math.max(240, rows.length * (figures.length * (barSize + 2) + 14) + 50);
   return (
-    <ChartCard title={`10 หน่วยงานสูงสุด เทียบแต่ละปี (${unit})`} icon={BarChart3}>
+    <ChartCard title={withUnit("10 หน่วยงานสูงสุด เทียบแต่ละปี", unit)} icon={BarChart3}>
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data} layout="vertical" margin={{ top: 0, right: 16, left: 4, bottom: 0 }} barGap={2} barCategoryGap={6}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
@@ -669,10 +669,10 @@ function IndicatorTable({
   const last = figures[figures.length - 1].fy;
   const peaks = figures.map((f) => peakMonth(f.monthly));
   const rows: { label: string; values: number[]; format: (n: number) => string; notes?: string[] }[] = [
-    { label: `จำนวนรวม (${unit})`, values: figures.map((f) => f.total.quantity), format: count },
+    { label: withUnit("จำนวนรวม", unit), values: figures.map((f) => f.total.quantity), format: count },
     { label: "มูลค่ารวม (บาท)", values: figures.map((f) => f.total.value), format: money },
     {
-      label: `เฉลี่ยต่อเดือน (${unit})`,
+      label: withUnit("เฉลี่ยต่อเดือน", unit),
       values: figures.map((f) => {
         const s = spanOf(f.fy);
         return perMonth(f.total.quantity, s.from, s.to);
@@ -680,7 +680,7 @@ function IndicatorTable({
       format: count,
     },
     {
-      label: `เดือนที่มากที่สุด (${unit})`,
+      label: withUnit("เดือนที่มากที่สุด", unit),
       values: peaks.map((p) => p?.quantity ?? 0),
       format: count,
       notes: peaks.map((p) => (p ? FISCAL_MONTHS[p.index] : "")),
@@ -774,7 +774,7 @@ function BreakdownTable({ figures, unit, colorOf }: { figures: YearFigures[]; un
             label="แสดง"
             value={metric}
             options={[
-              ["quantity", `จำนวน (${unit})`],
+              ["quantity", withUnit("จำนวน", unit)],
               ["value", "มูลค่า (บาท)"],
             ]}
             onChange={setMetric}
@@ -850,7 +850,7 @@ function CompareTable({
         <thead className="bg-gray-50 text-xs sticky top-0 z-[1]">
           <tr>
             <th className="px-3 py-2 text-left font-semibold text-gray-600">
-              {head} <span className="font-normal text-gray-400">({unit})</span>
+              {head} {unit && <span className="font-normal text-gray-400">({unit})</span>}
             </th>
             <YearHeaders figures={figures} colorOf={colorOf} />
             <th className="px-3 py-2 text-right font-semibold text-gray-600 whitespace-nowrap">

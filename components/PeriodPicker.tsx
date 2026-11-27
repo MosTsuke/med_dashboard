@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { formatThaiIsoDate, GRAIN_LABEL } from "@/lib/monthlyView";
-import { fiscalYearPeriod, formatDate, parseIsoDate, periodFiscalYear, periodRange } from "@/lib/supply/shape";
+import { fiscalYearPeriod, formatDate, parseIsoDate, periodFiscalYear, periodRange, wallClockToday } from "@/lib/supply/shape";
 import type { DbGrain, DbPeriod } from "@/types";
 
 /** What the database has for the chosen report. */
@@ -49,8 +49,7 @@ const fiscalYearOfIso = (s: string) => {
  * well before it (a copy of old data, the demo), then its last day, so the
  * choices are never empty. */
 function anchorDate(bounds: PeriodBounds): string {
-  const now = new Date();
-  const today = formatDate(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+  const today = formatDate(wallClockToday());
   if (!bounds.maxDate || bounds.maxDate >= addDays(today, -7)) return today;
   return bounds.maxDate;
 }

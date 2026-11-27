@@ -12,6 +12,7 @@ import {
   type RecordsQuery,
 } from "@/lib/supply/shape";
 import type { DashboardData, DbPeriod, DbReportKind, ReportRecord, ReportRecordsPage } from "@/types";
+import type { ExportRow } from "@/lib/offline/format";
 
 /**
  * Built-in MADE-UP data for the database reports (สถิติจ่าย, สถิติแพ็ค,
@@ -352,4 +353,26 @@ export function getDemoRecords(kind: DbReportKind, q: RecordsQuery): ReportRecor
     note: r.note,
   }));
   return { rows: out, total: matches.length };
+}
+
+/** Every demo event in [from, to), for "ส่งออก HTML" — the same fields the
+ * reports and record lists above use. */
+export function getDemoExportRows(kind: DbReportKind, from: Date, to: Date): ExportRow[] {
+  return events(kind)
+    .filter((r) => inRange(r, from, to))
+    .map((r) => ({
+      id: r.id,
+      at: new Date(r.at),
+      setId: r.set.id,
+      setName: r.set.name,
+      setCode: null,
+      setPrice: r.set.price,
+      packPrice: r.barcode != null ? r.set.price : null,
+      barcode: r.barcode != null ? String(r.barcode) : null,
+      qty: r.qty,
+      expiry: r.expiry != null ? new Date(r.expiry) : null,
+      department: r.dept,
+      person: r.person,
+      note: r.note,
+    }));
 }

@@ -71,6 +71,11 @@ export interface ReportSql {
   /** … + @offset, @pageSize → id, at, setId, setName, barcode, quantity,
    * expiryDate, department, person, note; newest first. */
   rows: string;
+  /** @from, @to → every event in the range with what both the report and
+   * the record list need (setCode, setPrice, packPrice too), unordered —
+   * for "ส่งออก HTML" (lib/offline/format.ts). Same rows as `aggregate`
+   * sums and `rows` lists. */
+  exportRows: string;
 }
 
 /** First day of the bucket `date` falls in: the day itself, the 1st of its
@@ -162,6 +167,23 @@ WHERE ${range}
 ${ROW_FILTERS}
 ORDER BY ${spec.date} DESC, ${spec.id} DESC
 OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`,
+    exportRows: `
+SELECT
+  ${spec.id}            AS id,
+  ${spec.date}          AS at,
+  ${spec.setId}         AS setId,
+  ${ITEM_NAME_EXPR}     AS setName,
+  st.SetTbName1         AS setCode,
+  st.SetTbPrice         AS setPrice,
+  p.SetTbPrice          AS packPrice,
+  p.PackBarcode         AS barcode,
+  ${spec.qty}           AS qty,
+  p.SetTbExpireDate     AS expiry,
+  d.DepartTbName        AS department,
+  pe.PersonCall         AS person,
+  ${spec.note}          AS note
+${spec.from}
+WHERE ${range}`,
   };
 }
 
@@ -230,6 +252,36 @@ LEFT JOIN dbo.PersonTb  pe ${NOLOCK} ON pe.PersonTbId = dm.PersonTbId`,
     dateRangeDate: "DemandDate",
   }),
 };
+
+/**
+ * หมดอายุ/ใกล้หมดอายุ — packs not back at CSSD yet (ReturnTbNo = 0, the
+ * hospital's rule) and still active, expiring on or before @until: every
+ * one already expired, and those due soon. Where it is: SupplyTbNo = 0 →
+ * not dispensed (central store); otherwise SupplyTbNo is the SupplyNo of
+ * the SupplyTb row that dispensed it, and that row's DepartTbId the
+ * department. Placeholder dates (≤ 1900) are left out.
+ */
+export const EXPIRY_SQL = `
+SELECT
+  p.PackTbNo            AS id,
+  p.PackBarcode         AS barcode,
+  p.SetTbId             AS setId,
+  ${ITEM_NAME_EXPR}     AS setName,
+  COALESCE(st.SetTbPrice, p.SetTbPrice) AS price,
+  p.SetTbPackDate       AS packDate,
+  p.SetTbExpireDate     AS expiryDate,
+  p.SupplyTbNo          AS supplyNo,
+  s.SupplyNo            AS supplyFound,
+  s.SupplyDate          AS supplyDate,
+  d.DepartTbName        AS department,
+  COALESCE(NULLIF(LTRIM(RTRIM(sr.SterileTbName2)), ''), sr.SterileTbName) AS method
+FROM dbo.PackTb p ${NOLOCK}
+LEFT JOIN dbo.SetTb     st ${NOLOCK} ON st.SetTbId     = p.SetTbId
+LEFT JOIN dbo.SterileTb sr ${NOLOCK} ON sr.SterileTbId = p.SetTbSterileType
+LEFT JOIN dbo.SupplyTb  s  ${NOLOCK} ON s.SupplyNo     = p.SupplyTbNo AND p.SupplyTbNo <> 0
+LEFT JOIN dbo.DepartTb  d  ${NOLOCK} ON d.DepartTbId   = s.DepartTbId
+WHERE p.PackTbNo <> 0 AND p.PackTbActive = 1 AND p.ReturnTbNo = 0
+  AND p.SetTbExpireDate > '19000101' AND p.SetTbExpireDate <= @until`;
 
 /**
  * Run once per connection pool: any 1 here means the login could change

@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import type { ItemData } from "@/types";
 import { CHART_COLORS } from "@/lib/chartColors";
-import { formatNumber } from "@/lib/formatNumber";
+import { formatNumber, withUnit } from "@/lib/formatNumber";
 import ReportSectionHeader from "@/components/ReportSectionHeader";
 import { BarChart3 } from "lucide-react";
 
@@ -56,7 +56,7 @@ export default function ItemBarChart({
   unit = "ชิ้น",
 }: Props) {
   const CustomTooltip = makeTooltip(unit);
-  const resolvedTitle = title ?? `จำนวนรายการสูงสุด (${unit})`;
+  const resolvedTitle = title ?? withUnit("จำนวนรายการสูงสุด", unit);
   const sorted = [...data]
     .sort((a, b) => b.quantity - a.quantity)
     .slice(0, limit);

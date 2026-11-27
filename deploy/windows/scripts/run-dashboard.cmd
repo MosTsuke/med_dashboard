@@ -28,6 +28,9 @@ REM Listen on every network card, so other PCs can reach it (firewall allowing).
 set "HOSTNAME=0.0.0.0"
 set "NODE_ENV=production"
 set "NEXT_TELEMETRY_DISABLED=1"
+REM Hospital name and logo, set from the page: kept next to dashboard.env,
+REM outside app\ (which every update replaces).
+set "BRANDING_DIR=%CD%\branding"
 copy /Y "dashboard.env" "app\.env.local" >nul
 
 if /i "%~1"=="log" (

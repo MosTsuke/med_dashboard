@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/build-offline-viewer.mjs && next build",
+    "build:offline": "node scripts/build-offline-viewer.mjs",
     "start": "next start",
     "lint": "next lint"
   },
@@ -28,6 +29,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10",
+    "esbuild": "0.25.4",
     "eslint": "^8",
     "eslint-config-next": "^14",
     "postcss": "^8",

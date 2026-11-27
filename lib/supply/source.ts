@@ -1,6 +1,10 @@
 import { DbNotConfiguredError, isDbConfigured } from "@/lib/db/client";
-import { getDbDataRange, getDbRecords, getDbReport } from "@/lib/db/reports";
-import { getDemoDataRange, getDemoRecords, getDemoReport } from "@/lib/supply/demo";
+import { getDbDataRange, getDbExportRows, getDbRecords, getDbReport } from "@/lib/db/reports";
+import { getDemoDataRange, getDemoExportRows, getDemoRecords, getDemoReport } from "@/lib/supply/demo";
+import type { ExportRow } from "@/lib/offline/format";
+import { getDbExpiry } from "@/lib/db/reports";
+import { MAX_NEAR_EXPIRY, demoExpiryPacks, type ExpiryList } from "@/lib/expiry";
+import { formatDate, wallClockToday } from "@/lib/supply/shape";
 import type { DataRange, RecordsQuery } from "@/lib/supply/shape";
 import type { DashboardData, DbPeriod, DbReportKind, ReportRecordsPage } from "@/types";
 
@@ -41,5 +45,24 @@ export async function records(kind: DbReportKind, q: RecordsQuery): Promise<Repo
   const src = supplySource();
   if (src === "demo") return getDemoRecords(kind, q);
   if (src === "db") return getDbRecords(kind, q);
+  throw new DbNotConfiguredError();
+}
+
+/** Every event of a report in [from, to), for "ส่งออก HTML". */
+export async function exportRows(kind: DbReportKind, from: Date, to: Date): Promise<ExportRow[]> {
+  const src = supplySource();
+  if (src === "demo") return getDemoExportRows(kind, from, to);
+  if (src === "db") return getDbExportRows(kind, from, to);
+  throw new DbNotConfiguredError();
+}
+
+/** หมดอายุ/ใกล้หมดอายุ as of today: every pack not back at CSSD that has
+ * expired or expires within MAX_NEAR_EXPIRY days. */
+export async function expiryList(): Promise<ExpiryList> {
+  const today = wallClockToday();
+  const asOf = formatDate(today);
+  const src = supplySource();
+  if (src === "demo") return { asOf, packs: demoExpiryPacks(asOf) };
+  if (src === "db") return { asOf, packs: await getDbExpiry(new Date(today.getTime() + MAX_NEAR_EXPIRY * 86_400_000)) };
   throw new DbNotConfiguredError();
 }
